@@ -22,7 +22,7 @@ export function ThemeToggle() {
       root.classList.remove('light', 'dark')
       root.classList.add(next)
       const favicon = document.querySelector<HTMLLinkElement>('#app-favicon')
-      if (favicon) favicon.href = next === 'light' ? '/icon-light.png' : '/icon-dark.png'
+      if (favicon) favicon.href = next === 'light' ? '/icon-light-192.png' : '/icon-dark-192.png'
       try {
         localStorage.setItem('sylva-theme', next)
       } catch {}

@@ -67,7 +67,7 @@ try {
         `<meta property="og:title" content="${page.title}" />`,
       )
       .replace(
-        /<meta property="og:description" content="[^"]*"\s*\/>/,
+        /<meta\s+property="og:description"\s+content="[^"]*"\s*\/>/,
         `<meta property="og:description" content="${page.description}" />`,
       )
       .replace(

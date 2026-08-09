@@ -4,6 +4,16 @@
       "source": "/index.html",
       "destination": "/",
       "permanent": true
+    },
+    {
+      "source": "/privacy",
+      "destination": "/privacy/",
+      "permanent": true
+    },
+    {
+      "source": "/legal",
+      "destination": "/legal/",
+      "permanent": true
     }
   ],
   "headers": [

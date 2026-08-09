@@ -89,7 +89,10 @@ export function SigningGuideAndFaq() {
           <h2 id="faq-title" className="text-lg font-semibold md:text-xl">
             Frequently asked questions
           </h2>
-          <p className="text-xs text-muted-foreground">v0.1.0</p>
+          <p className="text-xs text-muted-foreground">
+            v0.1.0 <span aria-hidden>·</span>{' '}
+            <time dateTime="2026-08-09">Updated Aug 9, 2026</time>
+          </p>
         </div>
         <div className="mt-3 divide-y divide-border border-y border-border">
           {faqItems.map((item) => (

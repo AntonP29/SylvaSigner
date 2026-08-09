@@ -684,12 +684,12 @@ function WelcomeMark() {
   return (
     <div className="welcome-mark relative mx-auto size-24 md:size-28" aria-label="Sylva Signer">
       <img
-        src="/icon-light.png"
+        src="/icon-light-192.png"
         alt=""
         className="size-full object-contain drop-shadow-xl dark:hidden"
       />
       <img
-        src="/icon-dark.png"
+        src="/icon-dark-192.png"
         alt=""
         className="hidden size-full object-contain drop-shadow-xl dark:block"
       />
@@ -899,21 +899,21 @@ function InfoPage({ route }: { route: Exclude<SylvaRoute, 'app'> }) {
         <a href="/" className="flex items-center gap-3.5">
           <div className="relative size-12 shrink-0 overflow-hidden rounded-2xl shadow-sm md:size-14">
             <img
-              src="/icon-light.png"
+              src="/icon-light-192.png"
               alt="Sylva Signer logo"
               className="size-full scale-[1.18] object-cover dark:hidden"
             />
             <img
-              src="/icon-dark.png"
+              src="/icon-dark-192.png"
               alt=""
               aria-hidden
               className="hidden size-full scale-[1.18] object-cover dark:block"
             />
           </div>
           <div>
-            <h1 className="text-balance text-xl font-semibold tracking-tight md:text-2xl">
+            <span className="block text-balance text-xl font-semibold tracking-tight md:text-2xl">
               Sylva Signer
-            </h1>
+            </span>
             <p className="text-sm text-muted-foreground">Fully local IPA signing</p>
           </div>
         </a>
@@ -936,11 +936,14 @@ function InfoPage({ route }: { route: Exclude<SylvaRoute, 'app'> }) {
           </AnimateIcon>
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              {isPrivacy ? 'Privacy Policy' : 'Legal Notice'}
+              {isPrivacy ? 'Data and file handling' : 'Terms and attribution'}
             </p>
-            <h2 className="text-2xl font-semibold tracking-tight">
-              {isPrivacy ? 'Privacy Policy' : 'Legal'}
-            </h2>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {isPrivacy ? 'Privacy Policy' : 'Legal Notice'}
+            </h1>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Last updated <time dateTime="2026-08-09">August 9, 2026</time>
+            </p>
           </div>
         </div>
 
@@ -1826,12 +1829,12 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
         <div className="flex min-w-0 items-center gap-2.5 sm:gap-3.5">
           <div className="relative size-10 shrink-0 overflow-hidden rounded-xl shadow-sm sm:size-12 sm:rounded-2xl md:size-14">
             <img
-              src="/icon-light.png"
+              src="/icon-light-192.png"
               alt="Sylva Signer logo"
               className="size-full scale-[1.18] object-cover dark:hidden"
             />
             <img
-              src="/icon-dark.png"
+              src="/icon-dark-192.png"
               alt=""
               aria-hidden
               className="hidden size-full scale-[1.18] object-cover dark:block"

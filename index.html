@@ -15,8 +15,8 @@
       content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
     />
     <link rel="canonical" href="https://sylva.antonp29.dev/" />
-    <link id="app-favicon" rel="icon" type="image/png" href="/icon-dark.png" />
-    <link rel="apple-touch-icon" href="/icon-dark.png" />
+    <link id="app-favicon" rel="icon" type="image/png" sizes="192x192" href="/icon-dark-192.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-dark-192.png" />
     <link rel="manifest" href="/site.webmanifest" />
 
     <meta property="og:type" content="website" />
@@ -66,6 +66,7 @@
             "operatingSystem": "Any operating system with a supported web browser",
             "browserRequirements": "Current Chrome or Edge recommended; Safari and mobile browser support is experimental.",
             "softwareVersion": "0.1.0",
+            "dateModified": "2026-08-09",
             "isAccessibleForFree": true,
             "offers": {
               "@type": "Offer",
@@ -94,6 +95,7 @@
             "name": "How to sign an iOS IPA file in your browser",
             "description": "Use Sylva Signer to sign an iOS app package locally without Xcode or macOS.",
             "totalTime": "PT10M",
+            "dateModified": "2026-08-09",
             "supply": [
               { "@type": "HowToSupply", "name": "iOS IPA file" },
               { "@type": "HowToSupply", "name": "P12 or PFX signing certificate" },
@@ -155,7 +157,7 @@
           var selectedTheme = theme === "light" ? "light" : "dark";
           root.classList.add(selectedTheme);
           document.getElementById("app-favicon").href =
-            selectedTheme === "light" ? "/icon-light.png" : "/icon-dark.png";
+            selectedTheme === "light" ? "/icon-light-192.png" : "/icon-dark-192.png";
         } catch (error) {}
       })();
     </script>

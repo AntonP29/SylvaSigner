@@ -106,6 +106,7 @@ test("emits crawlable HTML and SEO discovery files", () => {
   const legal = readFileSync("dist/legal/index.html", "utf8");
   const robots = readFileSync("dist/robots.txt", "utf8");
   const sitemap = readFileSync("dist/sitemap.xml", "utf8");
+  const vercel = JSON.parse(readFileSync("vercel.json", "utf8"));
 
   expect(homepage).not.toContain('<div id="app"></div>');
   expect(homepage).toContain("Sign iOS IPA files locally in your browser");
@@ -117,10 +118,24 @@ test("emits crawlable HTML and SEO discovery files", () => {
   expect(homepage).toContain('"@type": "FAQPage"');
   expect(privacy).toContain("Privacy Policy - Sylva Signer");
   expect(privacy).toContain('href="https://sylva.antonp29.dev/privacy/"');
+  expect(privacy).toContain(
+    'property="og:description" content="Learn how Sylva Signer processes IPA files, certificates, provisioning profiles, passwords, and signed output locally in your browser."'
+  );
+  expect(privacy).toContain('<h1 class="text-2xl font-semibold tracking-tight">');
+  expect(privacy).toContain('dateTime="2026-08-09"');
   expect(legal).toContain("Legal Notice - Sylva Signer");
   expect(legal).toContain('href="https://sylva.antonp29.dev/legal/"');
+  expect(legal).toContain(
+    'property="og:description" content="Read the Sylva Signer legal notice, licensing information, permitted-use guidance, and third-party attribution."'
+  );
   expect(robots).toContain("Sitemap: https://sylva.antonp29.dev/sitemap.xml");
   expect(sitemap).toContain("https://sylva.antonp29.dev/privacy/");
+  expect(vercel.redirects).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ source: "/privacy", destination: "/privacy/", permanent: true }),
+      expect.objectContaining({ source: "/legal", destination: "/legal/", permanent: true })
+    ])
+  );
 });
 
 test("parses only currently signed NexCerts enterprise certificates", () => {
@@ -418,7 +433,7 @@ test("opens privacy and legal pages from the footer", async ({ page }) => {
   await expect(page.getByText("does not intentionally upload")).toBeVisible();
 
   await page.getByRole("link", { name: "Legal" }).click();
-  await expect(page.getByRole("heading", { name: "Legal" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Legal Notice" })).toBeVisible();
   await expect(page.getByText("made by AntonP29")).toBeVisible();
   await expect(page.getByRole("link", { name: "Visit AntonP29 on GitHub" })).toBeVisible();
 });
