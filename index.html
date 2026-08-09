@@ -3,9 +3,149 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Sign iOS IPA files locally in your browser with WebAssembly. Your IPA, certificate, profile, and password stay on your device during signing."
+    />
+    <meta name="author" content="AntonP29" />
+    <meta name="application-name" content="Sylva Signer" />
+    <meta name="theme-color" content="#111111" />
+    <meta
+      name="robots"
+      content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+    />
+    <link rel="canonical" href="https://sylva.antonp29.dev/" />
     <link id="app-favicon" rel="icon" type="image/png" href="/icon-dark.png" />
     <link rel="apple-touch-icon" href="/icon-dark.png" />
-    <title>Sylva Signer</title>
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="Sylva Signer" />
+    <meta property="og:title" content="Sylva Signer - Sign iOS IPA Files in Your Browser" />
+    <meta
+      property="og:description"
+      content="Sign iOS IPA files locally with zsign WebAssembly. Signing credentials and app files stay on your device."
+    />
+    <meta property="og:url" content="https://sylva.antonp29.dev/" />
+    <meta property="og:image" content="https://sylva.antonp29.dev/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Sylva Signer local iOS IPA signing" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Sylva Signer - Sign iOS IPA Files in Your Browser" />
+    <meta
+      name="twitter:description"
+      content="Sign iOS IPA files locally with zsign WebAssembly. Signing credentials and app files stay on your device."
+    />
+    <meta name="twitter:image" content="https://sylva.antonp29.dev/og.png" />
+    <meta name="twitter:image:alt" content="Sylva Signer local iOS IPA signing" />
+
+    <title>Sylva Signer - Sign iOS IPA Files in Your Browser</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://sylva.antonp29.dev/#website",
+            "url": "https://sylva.antonp29.dev/",
+            "name": "Sylva Signer",
+            "description": "A privacy-focused browser tool for signing iOS IPA files locally.",
+            "inLanguage": "en"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://sylva.antonp29.dev/#application",
+            "name": "Sylva Signer",
+            "url": "https://sylva.antonp29.dev/",
+            "description": "Sign iOS IPA files locally in a browser with zsign compiled to WebAssembly.",
+            "applicationCategory": "DeveloperApplication",
+            "applicationSubCategory": "iOS code signing tool",
+            "operatingSystem": "Any operating system with a supported web browser",
+            "browserRequirements": "Current Chrome or Edge recommended; Safari and mobile browser support is experimental.",
+            "softwareVersion": "0.1.0",
+            "isAccessibleForFree": true,
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "author": {
+              "@type": "Person",
+              "@id": "https://github.com/AntonP29#person",
+              "name": "AntonP29",
+              "url": "https://github.com/AntonP29",
+              "sameAs": ["https://github.com/AntonP29"]
+            },
+            "codeRepository": "https://github.com/AntonP29/SylvaSigner",
+            "license": "https://github.com/AntonP29/SylvaSigner/blob/master/LICENSE",
+            "featureList": [
+              "Local IPA signing with zsign WebAssembly",
+              "On-device certificate and provisioning profile processing",
+              "Optional dylib injection",
+              "Optional temporary iPhone installation flow"
+            ]
+          },
+          {
+            "@type": "HowTo",
+            "@id": "https://sylva.antonp29.dev/#how-to-sign",
+            "name": "How to sign an iOS IPA file in your browser",
+            "description": "Use Sylva Signer to sign an iOS app package locally without Xcode or macOS.",
+            "totalTime": "PT10M",
+            "supply": [
+              { "@type": "HowToSupply", "name": "iOS IPA file" },
+              { "@type": "HowToSupply", "name": "P12 or PFX signing certificate" },
+              { "@type": "HowToSupply", "name": "Mobile provisioning profile" }
+            ],
+            "step": [
+              { "@type": "HowToStep", "position": 1, "name": "Choose an IPA", "text": "Select a local .ipa file or import an IPA from a URL." },
+              { "@type": "HowToStep", "position": 2, "name": "Add a certificate", "text": "Select a .p12 or .pfx signing certificate and enter its password." },
+              { "@type": "HowToStep", "position": 3, "name": "Add provisioning", "text": "Select one or more .mobileprovision files for the target app." },
+              { "@type": "HowToStep", "position": 4, "name": "Review options", "text": "Optionally change the bundle identifier or inject compatible .dylib files." },
+              { "@type": "HowToStep", "position": 5, "name": "Sign and download", "text": "Start signing, keep the tab open, and download the signed IPA when processing finishes." }
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://sylva.antonp29.dev/#faq",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Does Sylva upload my certificate or IPA?",
+                "acceptedAnswer": { "@type": "Answer", "text": "No. Normal signing runs locally in a browser worker, so the IPA, certificate, provisioning profile, password, dylibs, and signed output stay on the device. Only the optional installation flow uploads the already-signed IPA after confirmation." }
+              },
+              {
+                "@type": "Question",
+                "name": "What is a P12 signing certificate?",
+                "acceptedAnswer": { "@type": "Answer", "text": "A .p12 or .pfx file packages an Apple signing certificate with its private key. Sylva uses it locally with a provisioning profile to create a valid code signature for an iOS app." }
+              },
+              {
+                "@type": "Question",
+                "name": "Do I need Xcode or a Mac to sign an IPA?",
+                "acceptedAnswer": { "@type": "Answer", "text": "No. Sylva runs zsign as WebAssembly in the browser, so the signing process does not require Xcode, macOS, or a remote signing server." }
+              },
+              {
+                "@type": "Question",
+                "name": "Which browsers work with Sylva Signer?",
+                "acceptedAnswer": { "@type": "Answer", "text": "A current Chrome or Edge browser on desktop is recommended. Safari, iPhone, iPad, Android, and other mobile browsers use an experimental compatibility path and may be slower or more memory constrained." }
+              },
+              {
+                "@type": "Question",
+                "name": "What is the IPA size limit?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Local signing has no fixed Sylva file-size limit, but it is constrained by the browser and the device's available memory. The optional temporary installation upload rejects signed IPA files larger than 1 GB." }
+              },
+              {
+                "@type": "Question",
+                "name": "What happens if a signing certificate is revoked?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Apple may stop trusting apps signed with a revoked certificate. Those apps can stop opening or installing even when the original signing process completed successfully." }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
     <script>
       (function () {
         try {

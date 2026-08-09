@@ -1,0 +1,26 @@
+# Sylva Signer
+
+Sylva Signer is a free, open-source browser tool for signing iOS IPA files locally.
+It runs zsign as WebAssembly in a dedicated browser worker and does not require Xcode,
+macOS, or a remote signing server.
+
+During normal signing, the IPA, P12/PFX certificate, provisioning profile, certificate
+password, injected dylibs, and signed output remain on the user's device. The separate,
+optional iPhone installation flow uploads only the already-signed IPA after explicit
+confirmation so iOS can retrieve it over HTTPS.
+
+## Primary pages
+
+- Signer: https://sylva.antonp29.dev/
+- Privacy policy: https://sylva.antonp29.dev/privacy/
+- Legal notice: https://sylva.antonp29.dev/legal/
+- Source code: https://github.com/AntonP29/SylvaSigner
+- Author: https://github.com/AntonP29
+- Upstream signing engine: https://github.com/zhlynn/zsign
+
+## Browser support
+
+Current Chrome or Edge on desktop is recommended. Safari, iPhone, iPad, Android, and
+other mobile browsers use an experimental compatibility path and can be slower or more
+memory constrained. Local signing has no fixed Sylva file-size limit, but browser and
+device memory are practical limits. Optional temporary installation rejects files over 1 GB.

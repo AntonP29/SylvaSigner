@@ -1,0 +1,18 @@
+{
+  "name": "Sylva Signer",
+  "short_name": "Sylva",
+  "description": "Sign iOS IPA files locally in your browser.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "/icon-dark.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

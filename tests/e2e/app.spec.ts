@@ -100,6 +100,29 @@ const nexCertsFixture = `
 --- | Company | Type | Status | Valid From | Valid To | Download | |:--------|:----|:------|:----------|:--------|:--------| | VIETNAM AIRLINES JSC 2 | Enterprise Certificate | ✅ Signed | Aug 8 12:21:46 2025 GMT | Aug 8 12:21:46 2026 GMT | [Download](https://download-directory.github.io/?url=https%3A//github.com/NovaDev404/certificates/tree/main/VIETNAM%2520AIRLINES%2520JSC%25202) | | China Telecom Corporation Limited | Enterprise Certificate | ❌ Revoked | Apr 23 08:44:02 2026 GMT | Apr 23 08:44:02 2027 GMT | [Download](https://download-directory.github.io/?url=https%3A//github.com/NovaDev404/certificates/tree/main/China%2520Telecom%2520Corporation%2520Limited) |
 `;
 
+test("emits crawlable HTML and SEO discovery files", () => {
+  const homepage = readFileSync("dist/index.html", "utf8");
+  const privacy = readFileSync("dist/privacy/index.html", "utf8");
+  const legal = readFileSync("dist/legal/index.html", "utf8");
+  const robots = readFileSync("dist/robots.txt", "utf8");
+  const sitemap = readFileSync("dist/sitemap.xml", "utf8");
+
+  expect(homepage).not.toContain('<div id="app"></div>');
+  expect(homepage).toContain("Sign iOS IPA files locally in your browser");
+  expect(homepage).toContain("Frequently asked questions");
+  expect(homepage).toContain('rel="canonical" href="https://sylva.antonp29.dev/"');
+  expect(homepage).toContain('property="og:image" content="https://sylva.antonp29.dev/og.png"');
+  expect(homepage).toContain('"@type": "SoftwareApplication"');
+  expect(homepage).toContain('"@type": "HowTo"');
+  expect(homepage).toContain('"@type": "FAQPage"');
+  expect(privacy).toContain("Privacy Policy - Sylva Signer");
+  expect(privacy).toContain('href="https://sylva.antonp29.dev/privacy/"');
+  expect(legal).toContain("Legal Notice - Sylva Signer");
+  expect(legal).toContain('href="https://sylva.antonp29.dev/legal/"');
+  expect(robots).toContain("Sitemap: https://sylva.antonp29.dev/sitemap.xml");
+  expect(sitemap).toContain("https://sylva.antonp29.dev/privacy/");
+});
+
 test("parses only currently signed NexCerts enterprise certificates", () => {
   const entries = parseNexCertsReadme(nexCertsFixture);
 
@@ -173,22 +196,26 @@ test("uploads small signed IPAs through the Sylva proxy", async () => {
   }
 });
 
-test("loads the exact Sylva signing work surface without external network requests", async ({ page }) => {
+test("loads the exact Sylva signing work surface without unexpected external requests", async ({ page }) => {
   const external: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
-    if (!["127.0.0.1", "localhost"].includes(url.hostname)) {
+    const expectedReleaseRequest =
+      request.url() === "https://api.github.com/repos/AntonP29/Sylva-iOS-Releases/releases";
+    if (!["127.0.0.1", "localhost"].includes(url.hostname) && !expectedReleaseRequest) {
       external.push(request.url());
     }
   });
 
   await page.goto("/");
+  await expect(page.getByRole("heading", { name: /Sylva Signer/ })).toBeVisible();
+  await expect(page.getByText("Private by design")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "About Sylva Signer" }).click();
   await expect(page.getByRole("heading", { name: "Hey there 👋" })).toBeVisible();
   await expect(page.getByText(/^\w+ \d{1,2}(?:st|nd|rd|th), \d{4}$/)).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByRole("heading", { name: "Sylva Signer" })).toBeVisible();
   await expect(page.getByText("Fully local IPA signing in your browser")).toBeVisible();
-  await expect(page.getByText("Private by design")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Previous IPAs" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open Sylva Signer on GitHub" })).toHaveAttribute(
     "href",
@@ -203,14 +230,13 @@ test("loads the exact Sylva signing work surface without external network reques
   await expect(page.locator("#bundle-id")).toBeVisible();
   await expect(page.getByText("Console")).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy logs" })).toBeVisible();
-  await expect(page.getByText("Sylva Signer runs zsign as WebAssembly inside a dedicated browser worker.")).toBeVisible();
+  await expect(page.getByText("Sylva Signer runs zsign as WebAssembly inside a dedicated browser worker.").first()).toBeVisible();
   await expect(page.getByText("Install QR")).toHaveCount(0);
   expect(external).toEqual([]);
 });
 
 test("derives output name from selected IPA and keeps live logs visible", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Continue" }).click();
   await page.setInputFiles("#ipa", "tests/fixtures/Example.ipa");
   await expect(page.locator("#output-name")).toHaveValue("Example_signed.ipa");
   await expect(page.getByText("Waiting for input. Drop your files and press Sign.")).toBeVisible();
@@ -232,7 +258,6 @@ test("imports an IPA from a URL and selects it for signing", async ({ page }) =>
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Continue" }).click();
   const remoteUrl = `${new URL(page.url()).origin}/remote-test.ipa`;
   await page.getByLabel("IPA URL").fill(remoteUrl);
   await page.getByRole("button", { name: "Import URL" }).click();
@@ -245,7 +270,6 @@ test("imports an IPA from a URL and selects it for signing", async ({ page }) =>
 
 test("extracts app metadata and fills the bundle ID when an IPA is selected", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Continue" }).click();
   const ipa = await syntheticIpa();
   await page.setInputFiles("#ipa", {
     name: "SylvaTest.ipa",
@@ -279,7 +303,6 @@ test("extracts app metadata and fills the bundle ID when an IPA is selected", as
 test("shows certificate and provisioning expiration details locally", async ({ page }) => {
   const { p12Bytes, profile } = syntheticSigningFiles();
   await page.goto("/");
-  await page.getByRole("button", { name: "Continue" }).click();
   const ipa = await syntheticIpa();
   await page.setInputFiles("#ipa", {
     name: "SylvaTest.ipa",
@@ -375,7 +398,6 @@ test("imports only signed public enterprise certificates from NexCerts", async (
   );
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Load signed list" }).click();
 
   await expect(page.getByText("VIETNAM AIRLINES JSC 2", { exact: true })).toBeVisible();
@@ -390,8 +412,8 @@ test("imports only signed public enterprise certificates from NexCerts", async (
 
 test("opens privacy and legal pages from the footer", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("link", { name: "Privacy Policy" }).click();
+  await expect(page).toHaveURL(/\/privacy\/$/);
   await expect(page.getByRole("heading", { name: "Privacy Policy" })).toBeVisible();
   await expect(page.getByText("does not intentionally upload")).toBeVisible();
 
@@ -403,7 +425,6 @@ test("opens privacy and legal pages from the footer", async ({ page }) => {
 
 test("opens previous IPA history from the header", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Previous IPAs" }).click();
   await expect(page.getByRole("heading", { name: "Previous IPAs" })).toBeVisible();
   await expect(page.getByText("No signed IPA history yet.")).toBeVisible();
@@ -427,7 +448,6 @@ test("retains an active install QR and app icon in previous IPAs", async ({ page
     }]));
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Previous IPAs" }).click();
 
   await expect(page.getByText("Sylva Test", { exact: true })).toBeVisible();
@@ -449,8 +469,7 @@ test.describe("mobile availability", () => {
     await page.goto("/");
 
     await expect(page.getByRole("heading", { name: "Desktop recommended" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Hey there 👋" })).toBeVisible();
-    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByText("Mobile compatibility mode", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign IPA" })).toBeDisabled();
     await expect(page.getByRole("link", { name: "Privacy Policy" })).toBeVisible();
@@ -474,7 +493,6 @@ test.describe("mobile availability", () => {
       }]));
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Continue" }).click();
     await page.getByRole("button", { name: "Previous IPAs" }).click();
 
     const installLink = page.getByRole("link", { name: "Install on iPhone" });
@@ -491,7 +509,6 @@ test.describe("mobile availability", () => {
     const { p12Bytes, profile } = syntheticSigningFiles();
     const ipa = await syntheticIpa();
     await page.goto("/");
-    await page.getByRole("button", { name: "Continue" }).click();
     await page.setInputFiles("#ipa", {
       name: "SylvaTest.ipa",
       mimeType: "application/zip",

@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { Info } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -63,9 +64,10 @@ import { saveOutput, signIpa } from '@/zsign-api'
 import { sylvaProxyBaseUrl } from '@/install-api'
 import type { OutputFile, SignIpaOptions, ZsignProgress } from '@/types'
 import { cn } from '@/lib/utils'
+import { PrivacySummary, SigningGuideAndFaq } from '@/components/seo-content'
 
 type SignState = 'idle' | 'signing' | 'done' | 'error'
-type Route = 'app' | 'privacy' | 'legal'
+export type SylvaRoute = 'app' | 'privacy' | 'legal'
 
 type ProgressState = {
   value: number
@@ -119,20 +121,26 @@ const sylvaIosReleasesUrl = `${sylvaIosRepoUrl}/releases`
 const sylvaIosFallbackIpaUrl =
   'https://github.com/AntonP29/Sylva-iOS-Releases/releases/latest'
 
-function routeFromHash(): Route {
-  if (window.location.hash === '#privacy') return 'privacy'
-  if (window.location.hash === '#legal') return 'legal'
+function routeFromLocation(): SylvaRoute {
+  if (typeof window === 'undefined') return 'app'
+  const pathname = window.location.pathname.replace(/\/+$/, '')
+  if (pathname === '/privacy' || window.location.hash === '#privacy') return 'privacy'
+  if (pathname === '/legal' || window.location.hash === '#legal') return 'legal'
   return 'app'
 }
 
-function useRoute() {
-  const [route, setRoute] = React.useState<Route>(routeFromHash)
+function useRoute(initialRoute?: SylvaRoute) {
+  const [route, setRoute] = React.useState<SylvaRoute>(() => initialRoute ?? routeFromLocation())
 
   React.useEffect(() => {
-    const updateRoute = () => setRoute(routeFromHash())
+    const updateRoute = () => setRoute(routeFromLocation())
     window.addEventListener('hashchange', updateRoute)
-    return () => window.removeEventListener('hashchange', updateRoute)
-  }, [])
+    window.addEventListener('popstate', updateRoute)
+    return () => {
+      window.removeEventListener('hashchange', updateRoute)
+      window.removeEventListener('popstate', updateRoute)
+    }
+  }, [initialRoute])
 
   return route
 }
@@ -837,10 +845,10 @@ function LegalFooter() {
         </div>
 
         <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-          <a className="transition-colors hover:text-red-500" href="#privacy">
+          <a className="transition-colors hover:text-red-500" href="/privacy/">
             Privacy Policy
           </a>
-          <a className="transition-colors hover:text-blue-500" href="#legal">
+          <a className="transition-colors hover:text-blue-500" href="/legal/">
             Legal
           </a>
           <a
@@ -882,13 +890,13 @@ function isAppleMobileBrowser() {
   )
 }
 
-function InfoPage({ route }: { route: Exclude<Route, 'app'> }) {
+function InfoPage({ route }: { route: Exclude<SylvaRoute, 'app'> }) {
   const isPrivacy = route === 'privacy'
 
   return (
     <main className="mx-auto flex min-h-svh w-full max-w-3xl flex-col px-5 py-8 md:px-8 md:py-12">
       <header className="flex items-center justify-between gap-4">
-        <a href="#" className="flex items-center gap-3.5">
+        <a href="/" className="flex items-center gap-3.5">
           <div className="relative size-12 shrink-0 overflow-hidden rounded-2xl shadow-sm md:size-14">
             <img
               src="/icon-light.png"
@@ -1267,13 +1275,7 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
   const [consoleActivity, setConsoleActivity] = React.useState<ConsoleActivity | null>(null)
   const [historyEntries, setHistoryEntries] = React.useState<IpaHistoryEntry[]>([])
   const [historyDialogOpen, setHistoryDialogOpen] = React.useState(false)
-  const [welcomeOpen, setWelcomeOpen] = React.useState(() => {
-    try {
-      return !Boolean(window.localStorage.getItem('sylva_welcome_shown'))
-    } catch {
-      return false
-    }
-  })
+  const [welcomeOpen, setWelcomeOpen] = React.useState(false)
   const [currentHistoryId, setCurrentHistoryId] = React.useState('')
   const installMetadataRef = React.useRef<Partial<InstallMetadata>>({})
   const consoleRef = React.useRef<HTMLDivElement>(null)
@@ -1820,9 +1822,9 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
 
   return (
     <main className={`mx-auto flex min-h-svh w-full max-w-6xl flex-col px-5 py-8 md:px-8 md:py-12 ${mobileMode && state === 'signing' ? 'mobile-signing' : ''}`}>
-      <header className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="relative size-12 shrink-0 overflow-hidden rounded-2xl shadow-sm md:size-14">
+      <header className="flex items-center justify-between gap-2 sm:gap-4">
+        <div className="flex min-w-0 items-center gap-2.5 sm:gap-3.5">
+          <div className="relative size-10 shrink-0 overflow-hidden rounded-xl shadow-sm sm:size-12 sm:rounded-2xl md:size-14">
             <img
               src="/icon-light.png"
               alt="Sylva Signer logo"
@@ -1836,15 +1838,25 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
             />
           </div>
           <div>
-            <h1 className="text-balance text-xl font-semibold tracking-tight md:text-2xl">
-              Sylva Signer
+            <h1 className="whitespace-nowrap text-lg font-semibold tracking-tight sm:text-xl md:text-2xl">
+              Sylva Signer<span className="sr-only"> - Local iOS IPA Signer</span>
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="hidden text-sm text-muted-foreground sm:block">
               Fully local IPA signing in your browser
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setWelcomeOpen(true)}
+            aria-label="About Sylva Signer"
+            title="About Sylva Signer"
+            className="size-9 px-0"
+          >
+            <Info size={16} />
+          </Button>
           <AnimateIcon animateOnHover asChild>
             <Button
               type="button"
@@ -1876,6 +1888,8 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
       </header>
 
       <Separator className="my-8" />
+
+      <PrivacySummary />
 
       {mobileMode && (
         <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-700 dark:text-amber-300">
@@ -2307,6 +2321,8 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
         </div>
       </div>
 
+      <SigningGuideAndFaq />
+
       {installDialogOpen && firstOutput && (
         <InstallQrDialog
           output={firstOutput}
@@ -2334,14 +2350,7 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
       )}
 
       {welcomeOpen && (
-        <WelcomeDialog
-          onClose={() => {
-            try {
-              window.localStorage.setItem('sylva_welcome_shown', 'true')
-            } catch {}
-            setWelcomeOpen(false)
-          }}
-        />
+        <WelcomeDialog onClose={() => setWelcomeOpen(false)} />
       )}
 
       <LegalFooter />
@@ -2349,8 +2358,8 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
   )
 }
 
-export function SylvaSigner() {
-  const route = useRoute()
+export function SylvaSigner({ initialRoute }: { initialRoute?: SylvaRoute } = {}) {
+  const route = useRoute(initialRoute)
   const mobile = isMobileBrowser()
 
   if (route === 'privacy' || route === 'legal') {
