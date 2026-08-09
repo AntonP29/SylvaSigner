@@ -21,7 +21,7 @@ through Palera. Small uploads are relayed through the Sylva Cloudflare Worker fo
 progress; larger uploads keep the direct browser-to-Litterbox path. This action is
 separate from local signing and requires explicit user confirmation.
 
-Made by [AntonP29](https://github.com/AntonP29). Project status: `July 8, 2026`.
+Made by [AntonP29](https://github.com/AntonP29). Project status: `August 9, 2026`.
 
 ## Features
 
