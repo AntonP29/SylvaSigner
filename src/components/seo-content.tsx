@@ -58,26 +58,26 @@ export function PrivacySummary() {
 
 export function SigningGuideAndFaq() {
   return (
-    <div className="mt-12 space-y-12">
+    <div className="mt-10 grid gap-10 border-t border-border pt-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(19rem,0.85fr)] lg:gap-12">
       <section aria-labelledby="signing-guide-title" id="how-to-sign">
-        <h2 id="signing-guide-title" className="text-xl font-semibold md:text-2xl">
+        <h2 id="signing-guide-title" className="text-lg font-semibold md:text-xl">
           How do you sign an iOS IPA file online?
         </h2>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Sylva signs an iOS app package locally without Xcode or macOS. Supply the IPA, an Apple
           signing certificate, and a matching provisioning profile; review the detected app details;
           then run the WebAssembly signer and download the finished file without sending signing
           credentials to a server.
         </p>
-        <ol className="mt-6 grid gap-x-8 gap-y-5 md:grid-cols-2">
+        <ol className="mt-4 grid gap-x-6 sm:grid-cols-2">
           {signingSteps.map(([title, description], index) => (
-            <li key={title} className="flex gap-3 border-t border-border pt-4">
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+            <li key={title} className="flex gap-2.5 border-t border-border py-3">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold">
                 {index + 1}
               </span>
-              <div>
-                <h3 className="text-sm font-semibold">{title}</h3>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
+              <div className="min-w-0">
+                <h3 className="text-[13px] font-semibold leading-5">{title}</h3>
+                <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>
               </div>
             </li>
           ))}
@@ -85,21 +85,19 @@ export function SigningGuideAndFaq() {
       </section>
 
       <section aria-labelledby="faq-title" id="faq">
-        <div className="max-w-3xl">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            Version 0.1.0
-          </p>
-          <h2 id="faq-title" className="mt-2 text-xl font-semibold md:text-2xl">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="faq-title" className="text-lg font-semibold md:text-xl">
             Frequently asked questions
           </h2>
+          <p className="text-xs text-muted-foreground">v0.1.0</p>
         </div>
-        <div className="mt-5 divide-y divide-border border-y border-border">
+        <div className="mt-3 divide-y divide-border border-y border-border">
           {faqItems.map((item) => (
-            <details key={item.question} className="group py-4">
-              <summary className="cursor-pointer list-none pr-8 text-sm font-semibold marker:hidden">
+            <details key={item.question} className="group py-3">
+              <summary className="cursor-pointer list-none pr-4 text-[13px] font-semibold leading-5 marker:hidden">
                 {item.question}
               </summary>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+              <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
                 {item.answer}
               </p>
             </details>
