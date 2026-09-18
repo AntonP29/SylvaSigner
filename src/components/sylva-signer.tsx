@@ -2151,22 +2151,15 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="bundle-id" className="flex items-center gap-1.5">
-                  <Fingerprint size={14} className="text-muted-foreground" />
-                  Bundle ID
-                </Label>
-                <div className="flex min-w-0 gap-2">
-                  <Input
-                    id="bundle-id"
-                    placeholder="Detected from IPA"
-                    value={bundleId}
-                    onChange={(e) => setBundleId(e.target.value)}
-                    className="min-w-0"
-                  />
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="bundle-id" className="flex items-center gap-1.5">
+                    <Fingerprint size={14} className="text-muted-foreground" />
+                    Bundle ID
+                  </Label>
                   <Button
                     type="button"
                     variant="outline"
-                    size="sm"
+                    size="xs"
                     onClick={() => certificateBundleId && setBundleId(certificateBundleId)}
                     disabled={!certificateBundleId || state === 'signing'}
                     title={
@@ -2178,6 +2171,12 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
                     Use cert bundle ID
                   </Button>
                 </div>
+                <Input
+                  id="bundle-id"
+                  placeholder="Detected from IPA"
+                  value={bundleId}
+                  onChange={(e) => setBundleId(e.target.value)}
+                />
               </div>
             </div>
 
