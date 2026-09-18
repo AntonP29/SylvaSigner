@@ -1,6 +1,6 @@
 # Production Release Checklist
 
-Last reviewed: July 8, 2026.
+Last reviewed: September 18, 2026.
 
 Sylva Signer is published as a public source repository under the root MIT License,
 with third-party components remaining under the licenses documented in
@@ -38,7 +38,7 @@ with third-party components remaining under the licenses documented in
    source archives.
 6. Confirm that the README's dependency table still matches `package.json` and
    that optional Litterbox/Palera/Sylva Worker behavior is accurately described,
-   including the 100 MB proxy limit and direct-upload fallback.
+   including the first-party manifest endpoint, 100 MB proxy limit, and fallbacks.
 
 ## Repository Presentation
 

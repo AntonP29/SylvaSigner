@@ -93,7 +93,7 @@ try {
           url: 'https://github.com/AntonP29',
         },
         inLanguage: 'en',
-        dateModified: '2026-08-09',
+        dateModified: '2026-09-18',
       })
       html = html.replace(
         /<script type="application\/ld\+json">[\s\S]*?<\/script>/,

@@ -942,7 +942,7 @@ function InfoPage({ route }: { route: Exclude<SylvaRoute, 'app'> }) {
               {isPrivacy ? 'Privacy Policy' : 'Legal Notice'}
             </h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              Last updated <time dateTime="2026-08-09">August 9, 2026</time>
+              Last updated <time dateTime="2026-09-18">September 18, 2026</time>
             </p>
           </div>
         </div>
@@ -954,8 +954,14 @@ function InfoPage({ route }: { route: Exclude<SylvaRoute, 'app'> }) {
                 Sylva Signer is designed to sign IPA files locally in your browser. The app
                 does not require a signing server and does not intentionally upload your IPA,
                 P12/PFX certificate, provisioning profile, password, or dylibs. If you choose
-                temporary installation after signing, only the signed IPA is uploaded so iOS can
-                fetch it over HTTPS.
+                 temporary installation after signing, only the signed IPA is uploaded so iOS can
+                 fetch it over HTTPS.
+               </p>
+              <p>
+                Temporary installation sends the app name, bundle ID, version, and temporary IPA
+                URL to the Sylva manifest endpoint. If that endpoint is unavailable, the same
+                manifest metadata is sent to Palera as a fallback. Certificates, profiles,
+                passwords, and unsigned source files are not included.
               </p>
               <p>
                 Optional certificate caching stores selected signing material and password

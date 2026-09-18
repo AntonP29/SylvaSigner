@@ -12,6 +12,7 @@ export type TemporaryInstallResult = {
   ipaUrl: string
   manifestUrl: string
   installUrl: string
+  manifestProvider: 'sylva' | 'palera'
 }
 
 export type UploadProgress = {
@@ -145,8 +146,52 @@ export function buildPaleraInstallUrls(
   return {
     ipaUrl,
     manifestUrl,
+    manifestProvider: 'palera',
     installUrl: `itms-services://?action=download-manifest&url=${encodeURIComponent(
       manifestUrl,
     )}`,
+  }
+}
+
+export function buildSylvaInstallUrls(
+  metadata: InstallMetadata,
+  ipaUrl: string,
+): TemporaryInstallResult {
+  const manifest = new URL(`${sylvaProxyBaseUrl}/manifest`)
+  manifest.searchParams.set('bundleid', metadata.bundleId)
+  manifest.searchParams.set('name', metadata.appName)
+  manifest.searchParams.set('version', metadata.version)
+  manifest.searchParams.set('fetchurl', ipaUrl)
+
+  const manifestUrl = manifest.toString()
+
+  return {
+    ipaUrl,
+    manifestUrl,
+    manifestProvider: 'sylva',
+    installUrl: `itms-services://?action=download-manifest&url=${encodeURIComponent(
+      manifestUrl,
+    )}`,
+  }
+}
+
+export async function createInstallUrls(
+  metadata: InstallMetadata,
+  ipaUrl: string,
+): Promise<TemporaryInstallResult> {
+  const sylvaResult = buildSylvaInstallUrls(metadata, ipaUrl)
+
+  try {
+    const response = await fetch(sylvaResult.manifestUrl, {
+      cache: 'no-store',
+      headers: { Accept: 'text/xml,application/xml' },
+    })
+    const contentType = response.headers.get('Content-Type')?.toLowerCase() || ''
+    if (!response.ok || !contentType.includes('xml')) {
+      throw new Error(`Sylva manifest endpoint returned HTTP ${response.status}.`)
+    }
+    return sylvaResult
+  } catch {
+    return buildPaleraInstallUrls(metadata, ipaUrl)
   }
 }

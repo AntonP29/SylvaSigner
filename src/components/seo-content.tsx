@@ -91,7 +91,7 @@ export function SigningGuideAndFaq() {
           </h2>
           <p className="text-xs text-muted-foreground">
             v0.1.0 <span aria-hidden>·</span>{' '}
-            <time dateTime="2026-08-09">Updated Aug 9, 2026</time>
+            <time dateTime="2026-09-18">Updated Sep 18, 2026</time>
           </p>
         </div>
         <div className="mt-3 divide-y divide-border border-y border-border">

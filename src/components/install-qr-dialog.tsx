@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  buildPaleraInstallUrls,
+  createInstallUrls,
   type InstallMetadata,
   type LitterboxExpiry,
   type TemporaryInstallResult,
@@ -107,13 +107,18 @@ export function InstallQrDialog({
       const ipaUrl = await uploadSignedIpaToLitterbox(output, expiry, {
         onProgress: setUploadProgress,
       })
-      const nextResult = buildPaleraInstallUrls(
+      const nextResult = await createInstallUrls(
         {
           appName: appName.trim(),
           bundleId: bundleId.trim(),
           version: version.trim(),
         },
         ipaUrl,
+      )
+      onLog?.(
+        nextResult.manifestProvider === 'sylva'
+          ? 'First-party HTTPS installation manifest is ready'
+          : 'Sylva manifest endpoint unavailable; using Palera fallback',
       )
       let nextQr = ''
       if (!directInstall) {
@@ -217,10 +222,10 @@ export function InstallQrDialog({
                   is uploaded to Litterbox and is public until it expires.
                 </p>
                 <p className="mt-2">
-                  Install success depends on Litterbox, Palera&apos;s manifest
-                  generator, Apple OTA behavior, and a certificate trusted by the
-                  iPhone. Litterbox does not accept files larger than 1 GB, and some
-                  networks or regions may block Catbox/Litterbox.
+                  Install success depends on Litterbox, the Sylva manifest endpoint
+                  (with Palera fallback), Apple OTA behavior, and a certificate trusted
+                  by the iPhone. Litterbox does not accept files larger than 1 GB, and
+                  some networks or regions may block Catbox/Litterbox.
                 </p>
               </div>
             )}

@@ -2,7 +2,11 @@ import { devices, expect, test } from "@playwright/test";
 import { readFileSync, readdirSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
 import forge from "node-forge";
-import { uploadSignedIpaToLitterbox } from "../../src/install-api";
+import {
+  buildSylvaInstallUrls,
+  createInstallUrls,
+  uploadSignedIpaToLitterbox
+} from "../../src/install-api";
 import { parseNexCertsReadme } from "../../src/public-certs";
 import {
   TextReader,
@@ -122,7 +126,7 @@ test("emits crawlable HTML and SEO discovery files", () => {
     'property="og:description" content="Learn how Sylva Signer processes IPA files, certificates, provisioning profiles, passwords, and signed output locally in your browser."'
   );
   expect(privacy).toContain('<h1 class="text-2xl font-semibold tracking-tight">');
-  expect(privacy).toContain('dateTime="2026-08-09"');
+  expect(privacy).toContain('dateTime="2026-09-18"');
   expect(legal).toContain("Legal Notice - Sylva Signer");
   expect(legal).toContain('href="https://sylva.antonp29.dev/legal/"');
   expect(legal).toContain(
@@ -208,6 +212,62 @@ test("uploads small signed IPAs through the Sylva proxy", async () => {
     else delete (runtime as { navigator?: Navigator }).navigator;
     if (xhrDescriptor) Object.defineProperty(globalThis, "XMLHttpRequest", xhrDescriptor);
     else delete (runtime as { XMLHttpRequest?: typeof XMLHttpRequest }).XMLHttpRequest;
+  }
+});
+
+test("builds a first-party HTTPS manifest URL for a Litterbox IPA", () => {
+  const result = buildSylvaInstallUrls(
+    { appName: "Sylva & Test", bundleId: "dev.sylva.test", version: "1.0" },
+    "https://litter.catbox.moe/example.ipa"
+  );
+  const manifest = new URL(result.manifestUrl);
+
+  expect(manifest.origin).toBe("https://sylvacors.antonp29.dev");
+  expect(manifest.pathname).toBe("/manifest");
+  expect(manifest.searchParams.get("bundleid")).toBe("dev.sylva.test");
+  expect(manifest.searchParams.get("name")).toBe("Sylva & Test");
+  expect(manifest.searchParams.get("fetchurl")).toBe(
+    "https://litter.catbox.moe/example.ipa"
+  );
+  expect(result.manifestProvider).toBe("sylva");
+  expect(result.installUrl).toContain(encodeURIComponent(result.manifestUrl));
+});
+
+test("uses the first-party manifest after a successful endpoint probe", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response("<?xml version=\"1.0\"?><plist version=\"1.0\"></plist>", {
+      status: 200,
+      headers: { "Content-Type": "text/xml; charset=utf-8" }
+    });
+
+  try {
+    const result = await createInstallUrls(
+      { appName: "Sylva Test", bundleId: "dev.sylva.test", version: "1" },
+      "https://litter.catbox.moe/example.ipa"
+    );
+    expect(result.manifestProvider).toBe("sylva");
+    expect(result.manifestUrl).toContain("https://sylvacors.antonp29.dev/manifest");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("falls back to Palera when the Sylva manifest endpoint is unavailable", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("offline");
+  };
+
+  try {
+    const result = await createInstallUrls(
+      { appName: "Sylva Test", bundleId: "dev.sylva.test", version: "1" },
+      "https://litter.catbox.moe/example.ipa"
+    );
+    expect(result.manifestProvider).toBe("palera");
+    expect(result.manifestUrl).toContain("https://api.palera.in/genPlist");
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 
