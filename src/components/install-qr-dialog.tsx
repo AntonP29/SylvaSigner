@@ -116,9 +116,9 @@ export function InstallQrDialog({
         ipaUrl,
       )
       onLog?.(
-        nextResult.manifestProvider === 'sylva'
-          ? 'First-party HTTPS installation manifest is ready'
-          : 'Sylva manifest endpoint unavailable; using Palera fallback',
+        nextResult.manifestProvider === 'palera'
+          ? 'Palera installation manifest is ready'
+          : 'Palera unavailable; using Sylva backup manifest',
       )
       let nextQr = ''
       if (!directInstall) {
@@ -222,8 +222,8 @@ export function InstallQrDialog({
                   is uploaded to Litterbox and is public until it expires.
                 </p>
                 <p className="mt-2">
-                  Install success depends on Litterbox, the Sylva manifest endpoint
-                  (with Palera fallback), Apple OTA behavior, and a certificate trusted
+                  Install success depends on Litterbox, Palera&apos;s manifest generator
+                  (with the Sylva Worker as backup), Apple OTA behavior, and a certificate trusted
                   by the iPhone. Litterbox does not accept files larger than 1 GB, and
                   some networks or regions may block Catbox/Litterbox.
                 </p>

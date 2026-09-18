@@ -179,9 +179,19 @@ export async function createInstallUrls(
   metadata: InstallMetadata,
   ipaUrl: string,
 ): Promise<TemporaryInstallResult> {
-  const sylvaResult = buildSylvaInstallUrls(metadata, ipaUrl)
+  const paleraResult = buildPaleraInstallUrls(metadata, ipaUrl)
 
   try {
+    const response = await fetch(paleraResult.manifestUrl, {
+      cache: 'no-store',
+      mode: 'no-cors',
+    })
+    if (response.type !== 'opaque' && !response.ok) {
+      throw new Error(`Palera manifest endpoint returned HTTP ${response.status}.`)
+    }
+    return paleraResult
+  } catch {
+    const sylvaResult = buildSylvaInstallUrls(metadata, ipaUrl)
     const response = await fetch(sylvaResult.manifestUrl, {
       cache: 'no-store',
       headers: { Accept: 'text/xml,application/xml' },
@@ -191,7 +201,5 @@ export async function createInstallUrls(
       throw new Error(`Sylva manifest endpoint returned HTTP ${response.status}.`)
     }
     return sylvaResult
-  } catch {
-    return buildPaleraInstallUrls(metadata, ipaUrl)
   }
 }

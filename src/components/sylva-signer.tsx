@@ -959,8 +959,8 @@ function InfoPage({ route }: { route: Exclude<SylvaRoute, 'app'> }) {
                </p>
               <p>
                 Temporary installation sends the app name, bundle ID, version, and temporary IPA
-                URL to the Sylva manifest endpoint. If that endpoint is unavailable, the same
-                manifest metadata is sent to Palera as a fallback. Certificates, profiles,
+                URL to Palera&apos;s manifest generator. If Palera is unavailable, the same
+                manifest metadata is sent to the Sylva Worker as a backup. Certificates, profiles,
                 passwords, and unsigned source files are not included.
               </p>
               <p>

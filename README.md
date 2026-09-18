@@ -21,7 +21,7 @@ profile, password, injected dylibs, and signed output are processed on the user'
 
 An optional post-sign installation flow can temporarily upload **only the signed IPA**
 to [Litterbox](https://litterbox.catbox.moe/) and generate an iOS installation manifest
-through the Sylva Cloudflare Worker, with Palera retained as an automatic fallback. Small
+through Palera, with the Sylva Cloudflare Worker retained as an automatic backup. Small
 uploads are relayed through the Worker for upload progress; larger uploads keep the direct
 browser-to-Litterbox path. This action is separate from local signing and requires explicit
 user confirmation.
@@ -69,8 +69,8 @@ Made by [AntonP29](https://github.com/AntonP29). Project status: `September 18, 
 - Browser-local `Previous IPAs` history with `Fully Local`, `Active`, and `Expired`
   states, app artwork, and active install QR codes retained until their links expire.
 - Local download of the signed IPA.
-- Optional QR/direct iPhone install flow using Litterbox and a first-party HTTPS plist,
-  with Palera fallback and measured upload progress for signed IPAs up to 100 MB through
+- Optional QR/direct iPhone install flow using Litterbox and Palera-generated HTTPS plists,
+  with a first-party Worker backup and measured upload progress for signed IPAs up to 100 MB through
   the Sylva Cloudflare Worker.
 - Temporary hosting choices of `1h`, `12h`, `24h`, or `72h`.
 - Responsive light/dark interface, animated controls, matching favicons, an animated
@@ -137,8 +137,8 @@ Temporary installation is not fully local. After confirmation:
    through `https://sylvacors.antonp29.dev/litterbox` so Sylva can show upload progress;
    larger signed IPAs use the direct browser-to-Litterbox path.
 2. The original IPA, P12, provisioning profile, password, and dylibs are not uploaded.
-3. The Sylva Worker generates an HTTPS Apple OTA plist containing the temporary IPA URL.
-   If that endpoint is unavailable during preparation, Sylva falls back to Palera.
+3. Palera generates an HTTPS Apple OTA plist containing the temporary IPA URL. If Palera
+   is unavailable during preparation, Sylva uses its first-party Worker as a backup.
 4. Desktop browsers receive an `itms-services://` QR code and install link. On iPhone or
    iPad, Sylva instead presents a direct **Install on iPhone** button after upload.
 
@@ -209,7 +209,7 @@ uploaded to Litterbox.
   reporting. Larger signed IPAs use the direct Litterbox path.
 - Temporary durations are controlled by Litterbox.
 - The signed IPA is publicly accessible to anyone with its temporary URL.
-- Installation depends on Litterbox, the Sylva manifest endpoint (or Palera fallback),
+- Installation depends on Litterbox, Palera (or the Sylva manifest backup),
   Apple OTA behavior, device trust, and the signing certificate/provisioning profile.
 - Some networks or regions may block Catbox/Litterbox.
 - The upload bar is determinate when the Sylva Worker path is used. It measures upload
@@ -460,7 +460,7 @@ uses zsign (MIT), zlib/minizip (zlib terms), OpenSSL 3.5.7 (Apache-2.0), and Ems
   vendored in this repository.
 - Optional temporary IPA hosting is provided by
   [Litterbox](https://litterbox.catbox.moe/).
-- Optional IPA URL import, first-party OTA manifests, and small signed-IPA upload progress
+- Optional IPA URL import, Palera-first OTA manifests with a first-party backup, and small signed-IPA upload progress
   use the Sylva Cloudflare Worker at `https://sylvacors.antonp29.dev`.
 - Animated interface icons are adapted from [Animate UI](https://animate-ui.com/)
   and use [Lucide](https://lucide.dev/) icon geometry.

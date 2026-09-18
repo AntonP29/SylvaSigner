@@ -233,30 +233,12 @@ test("builds a first-party HTTPS manifest URL for a Litterbox IPA", () => {
   expect(result.installUrl).toContain(encodeURIComponent(result.manifestUrl));
 });
 
-test("uses the first-party manifest after a successful endpoint probe", async () => {
+test("uses Palera after a successful availability probe", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response("<?xml version=\"1.0\"?><plist version=\"1.0\"></plist>", {
-      status: 200,
-      headers: { "Content-Type": "text/xml; charset=utf-8" }
-    });
-
-  try {
-    const result = await createInstallUrls(
-      { appName: "Sylva Test", bundleId: "dev.sylva.test", version: "1" },
-      "https://litter.catbox.moe/example.ipa"
-    );
-    expect(result.manifestProvider).toBe("sylva");
-    expect(result.manifestUrl).toContain("https://sylvacors.antonp29.dev/manifest");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("falls back to Palera when the Sylva manifest endpoint is unavailable", async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => {
-    throw new Error("offline");
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ url: String(input), init });
+    return new Response("plist", { status: 200 });
   };
 
   try {
@@ -266,6 +248,33 @@ test("falls back to Palera when the Sylva manifest endpoint is unavailable", asy
     );
     expect(result.manifestProvider).toBe("palera");
     expect(result.manifestUrl).toContain("https://api.palera.in/genPlist");
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.init?.mode).toBe("no-cors");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("falls back to the Sylva manifest when Palera is unavailable", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    if (requestCount === 1) throw new Error("Palera offline");
+    return new Response("<?xml version=\"1.0\"?><plist version=\"1.0\"></plist>", {
+      status: 200,
+      headers: { "Content-Type": "text/xml; charset=utf-8" }
+    });
+  };
+
+  try {
+    const result = await createInstallUrls(
+      { appName: "Sylva Test", bundleId: "dev.sylva.test", version: "1" },
+      "https://litter.catbox.moe/example.ipa"
+    );
+    expect(result.manifestProvider).toBe("sylva");
+    expect(result.manifestUrl).toContain("https://sylvacors.antonp29.dev/manifest");
+    expect(requestCount).toBe(2);
   } finally {
     globalThis.fetch = originalFetch;
   }

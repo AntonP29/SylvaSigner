@@ -38,7 +38,8 @@ with third-party components remaining under the licenses documented in
    source archives.
 6. Confirm that the README's dependency table still matches `package.json` and
    that optional Litterbox/Palera/Sylva Worker behavior is accurately described,
-   including the first-party manifest endpoint, 100 MB proxy limit, and fallbacks.
+   including Palera as the default manifest provider, the first-party manifest backup,
+   the 100 MB proxy limit, and fallbacks.
 
 ## Repository Presentation
 
