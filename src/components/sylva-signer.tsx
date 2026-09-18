@@ -1232,6 +1232,11 @@ function AppDetailsTile({
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   Expires {formatMetadataDate(profile.expiresAt)}
                 </p>
+                {profile.bundleId && (
+                  <p className="mt-0.5 break-all text-xs text-muted-foreground">
+                    Bundle ID {profile.bundleId}
+                  </p>
+                )}
               </div>
             </div>
           ))}
@@ -1294,6 +1299,7 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
   const canSign = Boolean(ipa[0] && (p12[0] || cachedCertInfo?.p12) && (profiles.length || cachedCertInfo?.profiles.length)) && state !== 'signing'
   const hasCache = Boolean(cachedCertInfo?.p12 || cachedCertInfo?.profiles.length || cachedCertInfo?.password)
   const firstOutput = outputs.find((output) => output.name.toLowerCase().endsWith('.ipa')) ?? outputs[0]
+  const certificateBundleId = profileMetadata.find((profile) => profile.bundleId)?.bundleId
 
   React.useEffect(() => {
     setHistoryEntries(readIpaHistory())
@@ -2149,12 +2155,29 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
                   <Fingerprint size={14} className="text-muted-foreground" />
                   Bundle ID
                 </Label>
-                <Input
-                  id="bundle-id"
-                  placeholder="Detected from IPA"
-                  value={bundleId}
-                  onChange={(e) => setBundleId(e.target.value)}
-                />
+                <div className="flex min-w-0 gap-2">
+                  <Input
+                    id="bundle-id"
+                    placeholder="Detected from IPA"
+                    value={bundleId}
+                    onChange={(e) => setBundleId(e.target.value)}
+                    className="min-w-0"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => certificateBundleId && setBundleId(certificateBundleId)}
+                    disabled={!certificateBundleId || state === 'signing'}
+                    title={
+                      certificateBundleId
+                        ? `Use ${certificateBundleId} from the provisioning profile`
+                        : 'No exact bundle ID found in the provisioning profile'
+                    }
+                  >
+                    Use cert bundle ID
+                  </Button>
+                </div>
               </div>
             </div>
 

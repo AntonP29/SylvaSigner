@@ -60,7 +60,8 @@ Made by [AntonP29](https://github.com/AntonP29). Project status: `September 18, 
 - Browser decoding for standard and Apple-optimized `CgBI` app icon PNGs, including
   channel correction and alpha unpremultiplication before thumbnail generation.
 - Local P12 certificate common-name/expiration parsing and provisioning-profile
-  name/expiration details in the app summary tile.
+  name/expiration details in the app summary tile, including an exact bundle ID action
+  when the profile contains a non-wildcard `application-identifier` entitlement.
 - Output names default to the input name with `_signed` appended.
 - Signed IPAs use zsign's native minizip writer and compressed output for parity with the
   upstream CLI and iOS installation tooling.

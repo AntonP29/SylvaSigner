@@ -16,6 +16,7 @@ export type CertificateMetadata = {
 export type ProvisioningMetadata = {
   name: string
   expiresAt: string
+  bundleId?: string
 }
 
 export type DylibArchitectureMetadata = {
@@ -114,6 +115,26 @@ function asString(value: unknown) {
 
 function arrayStrings(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function provisioningBundleId(profile: PlistRecord) {
+  const entitlements = asRecord(profile.Entitlements)
+  const applicationIdentifier = asString(entitlements['application-identifier']).trim()
+  if (!applicationIdentifier) return undefined
+
+  const knownPrefixes = [
+    ...arrayStrings(profile.ApplicationIdentifierPrefix),
+    ...arrayStrings(profile.TeamIdentifier),
+    asString(entitlements['com.apple.developer.team-identifier']),
+  ].map((value) => value.trim()).filter(Boolean)
+  const knownPrefix = knownPrefixes.find((prefix) =>
+    applicationIdentifier.startsWith(`${prefix}.`),
+  )
+  const bundleId = knownPrefix
+    ? applicationIdentifier.slice(knownPrefix.length + 1)
+    : applicationIdentifier.match(/^[A-Z0-9]{10}\.(.+)$/)?.[1]
+
+  return bundleId && !bundleId.includes('*') ? bundleId : undefined
 }
 
 function exactArrayBuffer(bytes: Uint8Array) {
@@ -515,6 +536,7 @@ export async function extractProvisioningMetadata(file: Blob): Promise<Provision
   return {
     name: profileName || (file instanceof File ? file.name : 'Provisioning Profile'),
     expiresAt,
+    bundleId: provisioningBundleId(profile),
   }
 }
 

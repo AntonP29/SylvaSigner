@@ -96,6 +96,11 @@ function syntheticSigningFiles() {
 <plist version="1.0"><dict>
 <key>Name</key><string>Sylva Development Profile</string>
 <key>ExpirationDate</key><date>2030-07-23T12:00:00Z</date>
+<key>ApplicationIdentifierPrefix</key><array><string>QDP6A6W29X</string></array>
+<key>Entitlements</key><dict>
+<key>application-identifier</key><string>QDP6A6W29X.com.hiuc1305.sign.2025</string>
+<key>com.apple.developer.team-identifier</key><string>QDP6A6W29X</string>
+</dict>
 </dict></plist>`);
   return { p12Bytes, profile };
 }
@@ -409,6 +414,12 @@ test("shows certificate and provisioning expiration details locally", async ({ p
   await expect(page.getByText("Expires Jun 22, 2030", { exact: true })).toBeVisible();
   await expect(page.getByText("Sylva Development Profile", { exact: true })).toBeVisible();
   await expect(page.getByText("Expires Jul 23, 2030", { exact: true })).toBeVisible();
+  await expect(page.getByText("Bundle ID com.hiuc1305.sign.2025", { exact: true })).toBeVisible();
+
+  const useCertificateBundleId = page.getByRole("button", { name: "Use cert bundle ID" });
+  await expect(useCertificateBundleId).toBeEnabled();
+  await useCertificateBundleId.click();
+  await expect(page.locator("#bundle-id")).toHaveValue("com.hiuc1305.sign.2025");
 
   await page.locator("#cert-password").fill("temporarily-wrong");
   await expect(page.getByText("Sylva Test Certificate", { exact: true })).toBeVisible();
