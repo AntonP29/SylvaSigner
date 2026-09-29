@@ -20,13 +20,13 @@ Signing does not require an upload or signing server: the IPA, certificate, prov
 profile, password, injected dylibs, and signed output are processed on the user's device.
 
 An optional post-sign installation flow can temporarily upload **only the signed IPA**
-to [Litterbox](https://litterbox.catbox.moe/) and generate an iOS installation manifest
+to [Litterbox](https://litterbox.catbox.moe/) or permanently backup to [Catbox](https://catbox.moe/) and generate an iOS installation manifest
 through Palera, with the Sylva Cloudflare Worker retained as an automatic backup. Small
 uploads are relayed through the Worker for upload progress; larger uploads keep the direct
-browser-to-Litterbox path. This action is separate from local signing and requires explicit
+browser-to-host path. This action is separate from local signing and requires explicit
 user confirmation.
 
-Made by [AntonP29](https://github.com/AntonP29). Project status: `September 18, 2026`.
+Made by [AntonP29](https://github.com/AntonP29). Project status: `September 29, 2026`.
 
 ## Features
 

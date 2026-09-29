@@ -5,6 +5,7 @@ import forge from "node-forge";
 import {
   buildSylvaInstallUrls,
   createInstallUrls,
+  uploadSignedIpaToCatbox,
   uploadSignedIpaToLitterbox
 } from "../../src/install-api";
 import { parseNexCertsReadme } from "../../src/public-certs";
@@ -285,6 +286,71 @@ test("falls back to the Sylva manifest when Palera is unavailable", async () => 
   }
 });
 
+test("uploads small signed IPAs to Catbox for permanent hosting", async () => {
+  const runtime = globalThis as typeof globalThis & {
+    navigator: Navigator;
+    XMLHttpRequest: typeof XMLHttpRequest;
+  };
+  const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const xhrDescriptor = Object.getOwnPropertyDescriptor(globalThis, "XMLHttpRequest");
+
+  let opened = "";
+  let sentForm: FormData | undefined;
+
+  class FakeXmlHttpRequest {
+    status = 200;
+    responseText = "https://files.catbox.moe/catbox-test.ipa";
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    onabort: (() => void) | null = null;
+    upload: { onprogress: ((event: ProgressEvent) => void) | null } = { onprogress: null };
+
+    open(method: string, url: string) {
+      opened = `${method} ${url}`;
+    }
+
+    send(form: FormData) {
+      sentForm = form;
+      queueMicrotask(() => {
+        this.onload?.();
+      });
+    }
+  }
+
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      maxTouchPoints: 5
+    }
+  });
+  Object.defineProperty(globalThis, "XMLHttpRequest", {
+    configurable: true,
+    value: FakeXmlHttpRequest
+  });
+
+  try {
+    const result = await uploadSignedIpaToCatbox({
+      path: "/output/test.ipa",
+      name: "test.ipa",
+      type: "application/zip",
+      data: new Blob(["test"])
+    });
+    expect(opened).toBe("POST https://sylvacors.antonp29.dev/catbox");
+    expect(result).toBe("https://files.catbox.moe/catbox-test.ipa");
+    expect(sentForm).toBeInstanceOf(FormData);
+    expect((sentForm?.get("fileToUpload") as File).name).toBe("test.ipa");
+    expect(sentForm?.get("reqtype")).toBe("fileupload");
+    expect(sentForm?.get("time")).toBeNull();
+  } finally {
+    if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+    else delete (runtime as { navigator?: Navigator }).navigator;
+    if (xhrDescriptor) Object.defineProperty(globalThis, "XMLHttpRequest", xhrDescriptor);
+    else delete (runtime as { XMLHttpRequest?: typeof XMLHttpRequest }).XMLHttpRequest;
+  }
+});
+
 test("loads the exact Sylva signing work surface without unexpected external requests", async ({ page }) => {
   const external: string[] = [];
   page.on("request", (request) => {
@@ -548,6 +614,31 @@ test("retains an active install QR and app icon in previous IPAs", async ({ page
   await expect(page.getByText("Sylva Test", { exact: true })).toBeVisible();
   await expect(page.getByAltText("Install Sylva Test QR code")).toBeVisible();
   await expect(page.getByText("Active", { exact: true })).toBeVisible();
+});
+
+test("renders Catbox permanent backup entries in previous IPAs history", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("sylva-signer-ipa-history", JSON.stringify([{
+      id: "catbox-entry",
+      name: "SylvaPermanent_signed.ipa",
+      signedAt: new Date().toISOString(),
+      metadata: { appName: "Sylva Permanent", bundleId: "dev.sylva.permanent", version: "1.0" },
+      iconDataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      provider: "catbox",
+      uploadExpiry: "permanent",
+      uploadedAt: new Date().toISOString(),
+      ipaUrl: "https://files.catbox.moe/example.ipa",
+      manifestUrl: "https://api.palera.in/catbox-example",
+      installUrl: "itms-services://?action=download-manifest&url=https%3A%2F%2Fcatbox.test"
+    }]));
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Previous IPAs" }).click();
+
+  await expect(page.getByText("Sylva Permanent", { exact: true })).toBeVisible();
+  await expect(page.getByAltText("Install Sylva Permanent QR code")).toBeVisible();
+  await expect(page.getByText("Active", { exact: true })).toBeVisible();
+  await expect(page.getByText("Catbox (Permanent)", { exact: true })).toBeVisible();
 });
 
 test.describe("mobile availability", () => {

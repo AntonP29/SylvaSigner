@@ -583,7 +583,9 @@ function PreviousIpasDialog({
                               {expired ? 'Expired' : 'Active'}
                             </StatusTag>
                             <StatusTag tone="local">
-                              Litterbox {entry.uploadExpiry}
+                              {entry.provider === 'catbox'
+                                ? 'Catbox (Permanent)'
+                                : `Litterbox ${entry.uploadExpiry ?? ''}`.trim()}
                             </StatusTag>
                           </>
                         )}
@@ -2361,9 +2363,9 @@ function SignerApp({ mobileMode = false }: { mobileMode?: boolean }) {
           directInstall={directInstallOnDevice}
           onClose={() => setInstallDialogOpen(false)}
           onLog={(message) => addLog(logLevelFor(message), message)}
-          onUploaded={(result, expiry) => {
+          onUploaded={(result, expiry, provider) => {
             if (!currentHistoryId) return
-            setHistoryEntries(updateHistoryEntryUpload(currentHistoryId, result, expiry))
+            setHistoryEntries(updateHistoryEntryUpload(currentHistoryId, result, expiry, provider))
           }}
         />
       )}

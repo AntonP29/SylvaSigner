@@ -11,12 +11,17 @@ import { TriangleAlert } from '@/components/animate-ui/icons/triangle-alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
   createInstallUrls,
+  catboxMaxFileSize,
+  litterboxMaxFileSize,
   type InstallMetadata,
   type LitterboxExpiry,
   type TemporaryInstallResult,
   type UploadProgress,
+  type UploadProvider,
+  uploadSignedIpaToCatbox,
   uploadSignedIpaToLitterbox,
 } from '@/install-api'
 import type { OutputFile } from '@/types'
@@ -27,7 +32,11 @@ type InstallQrDialogProps = {
   onClose: () => void
   directInstall?: boolean
   onLog?: (message: string) => void
-  onUploaded?: (result: TemporaryInstallResult, expiry: LitterboxExpiry) => void
+  onUploaded?: (
+    result: TemporaryInstallResult,
+    expiry?: LitterboxExpiry,
+    provider?: UploadProvider,
+  ) => void
 }
 
 type UploadState = 'idle' | 'uploading' | 'ready' | 'error'
@@ -60,6 +69,7 @@ export function InstallQrDialog({
     metadataValue(initialMetadata.version, '1'),
   )
   const [expiry, setExpiry] = React.useState<LitterboxExpiry>('1h')
+  const [useCatbox, setUseCatbox] = React.useState(false)
   const [showLimitations, setShowLimitations] = React.useState(false)
   const [state, setState] = React.useState<UploadState>('idle')
   const [error, setError] = React.useState('')
@@ -69,8 +79,17 @@ export function InstallQrDialog({
   const [uploadElapsedSeconds, setUploadElapsedSeconds] = React.useState(0)
   const [uploadProgress, setUploadProgress] = React.useState<UploadProgress | null>(null)
 
+  const outputSize = output.data instanceof Blob ? output.data.size : output.data.byteLength
+  const exceedsCatboxLimit = useCatbox && outputSize > catboxMaxFileSize
+  const exceedsLitterboxLimit = !useCatbox && outputSize > litterboxMaxFileSize
+
   const canUpload = Boolean(
-    state !== 'uploading' && appName.trim() && bundleId.trim() && version.trim(),
+    state !== 'uploading' &&
+      appName.trim() &&
+      bundleId.trim() &&
+      version.trim() &&
+      !exceedsCatboxLimit &&
+      !exceedsLitterboxLimit,
   )
 
   React.useEffect(() => {
@@ -103,10 +122,18 @@ export function InstallQrDialog({
 
     try {
       await waitForPaint()
-      onLog?.(`Uploading signed IPA to Litterbox for ${expiry}`)
-      const ipaUrl = await uploadSignedIpaToLitterbox(output, expiry, {
-        onProgress: setUploadProgress,
-      })
+      let ipaUrl: string
+      if (useCatbox) {
+        onLog?.('Uploading signed IPA to Catbox (permanent backup)...')
+        ipaUrl = await uploadSignedIpaToCatbox(output, {
+          onProgress: setUploadProgress,
+        })
+      } else {
+        onLog?.(`Uploading signed IPA to Litterbox for ${expiry}`)
+        ipaUrl = await uploadSignedIpaToLitterbox(output, expiry, {
+          onProgress: setUploadProgress,
+        })
+      }
       const nextResult = await createInstallUrls(
         {
           appName: appName.trim(),
@@ -137,11 +164,15 @@ export function InstallQrDialog({
       setResult(nextResult)
       setQrDataUrl(nextQr)
       setState('ready')
-      onUploaded?.(nextResult, expiry)
+      onUploaded?.(
+        nextResult,
+        useCatbox ? undefined : expiry,
+        useCatbox ? 'catbox' : 'litterbox',
+      )
       onLog?.(
         directInstall
           ? 'Direct iPhone installation link is ready'
-          : 'Install QR generated from temporary HTTPS IPA URL',
+          : `Install QR generated from ${useCatbox ? 'permanent Catbox' : 'temporary Litterbox'} HTTPS IPA URL`,
       )
     } catch (nextError) {
       const message =
@@ -182,7 +213,9 @@ export function InstallQrDialog({
                 {directInstall ? 'Install on iPhone' : 'Install with QR'}
               </h2>
               <p className="text-sm text-muted-foreground">
-                Temporarily host the signed IPA so iOS can fetch it over HTTPS.
+                {useCatbox
+                  ? 'Permanently host the signed IPA on Catbox so iOS can fetch it over HTTPS.'
+                  : 'Temporarily host the signed IPA so iOS can fetch it over HTTPS.'}
               </p>
             </div>
           </div>
@@ -201,7 +234,9 @@ export function InstallQrDialog({
               className="w-full rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-left text-sm text-yellow-700 transition-colors hover:bg-yellow-500/15 dark:text-yellow-300"
             >
               <span className="font-medium">
-                Only the signed IPA is uploaded for temporary install.
+                {useCatbox
+                  ? 'The signed IPA will be permanently backed up to Catbox.'
+                  : 'Only the signed IPA is uploaded for temporary install.'}
               </span>{' '}
               <span className="underline underline-offset-4">
                 {showLimitations ? 'Hide limitations' : 'View limitations'}
@@ -209,8 +244,9 @@ export function InstallQrDialog({
             </button>
 
             <p className="text-xs leading-5 text-muted-foreground">
-              Large signed IPAs may take a while to upload. Keep this tab open until the
-              installation link is ready. Litterbox accepts files up to 1 GB.
+              {useCatbox
+                ? 'Large signed IPAs may take a while to upload. Keep this tab open until the installation link is ready. Catbox accepts files up to 200 MB.'
+                : 'Large signed IPAs may take a while to upload. Keep this tab open until the installation link is ready. Litterbox accepts files up to 1 GB.'}
             </p>
 
             {showLimitations && (
@@ -219,13 +255,14 @@ export function InstallQrDialog({
                   {directInstall ? 'Direct installation' : 'QR installation'} is not fully
                   local. Your certificate, provisioning
                   profile, and password stay in this browser, but the signed IPA
-                  is uploaded to Litterbox and is public until it expires.
+                  is uploaded to {useCatbox ? 'Catbox (permanent public link)' : 'Litterbox (public until it expires)'}.
                 </p>
                 <p className="mt-2">
-                  Install success depends on Litterbox, Palera&apos;s manifest generator
+                  Install success depends on {useCatbox ? 'Catbox' : 'Litterbox'}, Palera&apos;s manifest generator
                   (with the Sylva Worker as backup), Apple OTA behavior, and a certificate trusted
-                  by the iPhone. Litterbox does not accept files larger than 1 GB, and
-                  some networks or regions may block Catbox/Litterbox.
+                  by the iPhone. Catbox accepts files up to 200 MB and stores them permanently;
+                  Litterbox accepts files up to 1 GB and deletes them after the chosen duration.
+                  Some networks or regions may block Catbox/Litterbox.
                 </p>
               </div>
             )}
@@ -259,6 +296,39 @@ export function InstallQrDialog({
               />
             </div>
 
+            <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 p-3.5">
+              <div className="space-y-0.5 pr-2">
+                <label
+                  htmlFor="install-backup-toggle"
+                  className="text-sm font-medium text-foreground cursor-pointer flex items-center gap-2"
+                >
+                  <span>Permanent backup (Catbox)</span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  {useCatbox
+                    ? 'Permanent hosting via Catbox — link never expires (max 200 MB)'
+                    : 'Temporary hosting via Litterbox — expires automatically (max 1 GB)'}
+                </p>
+              </div>
+              <Switch
+                id="install-backup-toggle"
+                checked={useCatbox}
+                onCheckedChange={setUseCatbox}
+              />
+            </div>
+
+            {exceedsCatboxLimit && (
+              <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-xs leading-5 text-yellow-700 dark:text-yellow-300">
+                This signed IPA ({(outputSize / (1024 * 1024)).toFixed(1)} MB) exceeds Catbox&apos;s 200 MB limit. Toggle backup off to use Litterbox (up to 1 GB).
+              </p>
+            )}
+
+            {exceedsLitterboxLimit && (
+              <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs leading-5 text-destructive">
+                This signed IPA ({(outputSize / (1024 * 1024)).toFixed(1)} MB) exceeds Litterbox&apos;s 1 GB limit. Choose a smaller IPA.
+              </p>
+            )}
+
             {state === 'uploading' && (
               <div
                 className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3"
@@ -267,7 +337,7 @@ export function InstallQrDialog({
                 data-testid="install-upload-progress"
               >
                 <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                  <span>Uploading signed IPA</span>
+                  <span>{useCatbox ? 'Backing up signed IPA to Catbox' : 'Uploading signed IPA'}</span>
                   <span>
                     {uploadProgress ? `${uploadProgress.percent}%` : `${uploadElapsedSeconds}s elapsed`}
                   </span>
@@ -284,7 +354,7 @@ export function InstallQrDialog({
                 </div>
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">
                   {uploadProgress
-                    ? 'Upload progress is measured to Sylva proxy. Keep this tab open while Litterbox finishes.'
+                    ? `Upload progress is measured to Sylva proxy. Keep this tab open while ${useCatbox ? 'Catbox' : 'Litterbox'} finishes.`
                     : 'Upload progress is indeterminate. Keep Sylva open until the install action appears.'}
                 </p>
               </div>
@@ -292,18 +362,31 @@ export function InstallQrDialog({
 
             <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="install-expiry">Temporary host duration</Label>
-                <select
-                  id="install-expiry"
-                  value={expiry}
-                  onChange={(event) => setExpiry(event.target.value as LitterboxExpiry)}
-                  className="h-9 rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                >
-                  <option value="1h">1 hour</option>
-                  <option value="12h">12 hours</option>
-                  <option value="24h">24 hours</option>
-                  <option value="72h">72 hours</option>
-                </select>
+                <Label htmlFor="install-expiry">
+                  {useCatbox ? 'Host retention' : 'Temporary host duration'}
+                </Label>
+                {useCatbox ? (
+                  <div
+                    id="install-expiry"
+                    className="flex h-9 items-center rounded-lg border border-border bg-muted/40 px-3 text-sm"
+                  >
+                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                      Permanent (Catbox)
+                    </span>
+                  </div>
+                ) : (
+                  <select
+                    id="install-expiry"
+                    value={expiry}
+                    onChange={(event) => setExpiry(event.target.value as LitterboxExpiry)}
+                    className="h-9 rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <option value="1h">1 hour</option>
+                    <option value="12h">12 hours</option>
+                    <option value="24h">24 hours</option>
+                    <option value="72h">72 hours</option>
+                  </select>
+                )}
               </div>
 
               {directInstall ? (
@@ -320,8 +403,12 @@ export function InstallQrDialog({
                     <Send size={16} />
                   )}
                   {state === 'uploading'
-                    ? 'Uploading signed IPA...'
-                    : 'Prepare Installation'}
+                    ? useCatbox
+                      ? 'Backing up to Catbox...'
+                      : 'Uploading signed IPA...'
+                    : useCatbox
+                      ? 'Backup & Install'
+                      : 'Prepare Installation'}
                 </Button>
               ) : (
                 <AnimateIcon
@@ -341,7 +428,13 @@ export function InstallQrDialog({
                     ) : (
                       <Send size={16} />
                     )}
-                    {state === 'uploading' ? 'Uploading...' : 'Create QR'}
+                    {state === 'uploading'
+                      ? useCatbox
+                        ? 'Backing up...'
+                        : 'Uploading...'
+                      : useCatbox
+                        ? 'Backup & Create QR'
+                        : 'Create QR'}
                   </Button>
                 </AnimateIcon>
               )}

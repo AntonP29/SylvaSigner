@@ -1,12 +1,12 @@
-import type { InstallMetadata, LitterboxExpiry, TemporaryInstallResult } from '@/install-api'
+import type { InstallMetadata, LitterboxExpiry, TemporaryInstallResult, UploadProvider } from '@/install-api'
 
 export type IpaHistoryEntry = {
   id: string
   name: string
   signedAt: string
   metadata?: Partial<InstallMetadata>
-  provider?: 'litterbox'
-  uploadExpiry?: LitterboxExpiry
+  provider?: UploadProvider
+  uploadExpiry?: LitterboxExpiry | 'permanent'
   uploadedAt?: string
   expiresAt?: string
   ipaUrl?: string
@@ -67,18 +67,24 @@ function expiryToMilliseconds(expiry: LitterboxExpiry) {
 export function updateHistoryEntryUpload(
   id: string,
   result: TemporaryInstallResult,
-  expiry: LitterboxExpiry,
-) {
+  expiry?: LitterboxExpiry,
+  provider: UploadProvider = 'litterbox',
+): IpaHistoryEntry[] {
   const entries = readIpaHistory()
   const uploadedAt = Date.now()
-  const nextEntries = entries.map((entry) =>
+  const nextEntries: IpaHistoryEntry[] = entries.map((entry) =>
     entry.id === id
       ? {
           ...entry,
-          provider: 'litterbox' as const,
-          uploadExpiry: expiry,
+          provider,
+          uploadExpiry: (provider === 'catbox' ? 'permanent' : (expiry ?? '1h')) as
+            | LitterboxExpiry
+            | 'permanent',
           uploadedAt: new Date(uploadedAt).toISOString(),
-          expiresAt: new Date(uploadedAt + expiryToMilliseconds(expiry)).toISOString(),
+          expiresAt:
+            provider === 'catbox'
+              ? undefined
+              : new Date(uploadedAt + expiryToMilliseconds(expiry ?? '1h')).toISOString(),
           ipaUrl: result.ipaUrl,
           manifestUrl: result.manifestUrl,
           installUrl: result.installUrl,
