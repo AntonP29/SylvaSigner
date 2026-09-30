@@ -23,8 +23,8 @@ An optional post-sign installation flow can temporarily upload **only the signed
 to [Litterbox](https://litterbox.catbox.moe/) or permanently backup to [Catbox](https://catbox.moe/) and generate an iOS installation manifest
 through Palera, with the Sylva Cloudflare Worker retained as an automatic backup. Small
 uploads are relayed through the Worker, with upload progress on desktop and iPhone/iPad.
-The Worker supports the required CORS preflight. Both hosts fall back to a direct
-upload if the proxy is unreachable or returns a retryable error; larger uploads use the direct
+The Worker supports the required CORS preflight. Small uploads retry once through the
+Worker's alternate hostname if the first attempt fails; larger uploads use the direct
 browser-to-host path. This action is separate from local signing and requires explicit
 user confirmation.
 
@@ -140,7 +140,8 @@ Temporary installation is not fully local. After confirmation:
    limit (with room for multipart overhead) are sent through
    `https://sylvacors.antonp29.dev/litterbox`, with progress on desktop and iPhone/iPad.
    Proxy connection failures, missing routes, size/rate
-   limits, and server errors automatically fall back to the direct Litterbox API.
+   limits, and server errors retry once through the Worker's alternate hostname,
+   restarting the percentage bar at 0%.
    Larger signed IPAs use the direct browser-to-Litterbox path.
 2. The original IPA, P12, provisioning profile, password, and dylibs are not uploaded.
 3. Palera generates an HTTPS Apple OTA plist containing the temporary IPA URL. If Palera
@@ -212,8 +213,9 @@ uploaded to Litterbox.
 
 - Maximum temporary upload size is 1 GB.
 - Small signed IPAs are uploaded through the Sylva Cloudflare Worker, with room for
-  multipart overhead below its 100 MB limit. Larger files and retryable proxy failures
-  use the direct Litterbox path.
+  multipart overhead below its 100 MB limit. A retry uses the same Worker through
+  `https://sylva-worker.antonp29.workers.dev`, preserving measured progress and resetting
+  the bar to 0%. Larger files use the direct Litterbox path.
 - Temporary durations are controlled by Litterbox.
 - The signed IPA is publicly accessible to anyone with its temporary URL.
 - Installation depends on Litterbox, Palera (or the Sylva manifest backup),
@@ -222,9 +224,8 @@ uploaded to Litterbox.
 - The upload bar is determinate when the Sylva Worker path is used. It measures upload
   progress to the Worker; the Worker still has to finish forwarding the file to Litterbox.
 - Direct uploads remain indeterminate because browser upload progress listeners force
-  an extra CORS preflight to the host. The bar resets if an upload switches
-  from the proxy to the direct API. The dialog identifies this as a second upload
-  attempt and shows the time remaining instead of silently restarting the timer.
+  an extra CORS preflight to the host. They show a looping bar without a percentage.
+  The dialog displays no countdown or elapsed timer.
 - Proxy transfers stop after two minutes without upload progress or a host response;
   direct requests stop after five minutes. Manifest probes have a 15-second deadline
   per provider, and the UI displays manifest preparation separately from upload.

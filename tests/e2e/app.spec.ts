@@ -651,8 +651,10 @@ test.describe("mobile availability", () => {
     userAgent: iphone.userAgent
   });
 
-  test("explains the retry after 100% and cancels an unresponsive mobile upload", async ({ page }) => {
-    await page.addInitScript(() => {
+  for (const large of [false, true]) test(large
+    ? "shows a looping bar without percentages or timers for large mobile uploads"
+    : "restarts measured mobile progress at 0% on retry without a timer", async ({ page }) => {
+    await page.addInitScript((large) => {
       // Supply a signed output; keep this regression focused on the upload UI.
       const RealWorker = window.Worker;
       window.Worker = class extends EventTarget {
@@ -662,10 +664,12 @@ test.describe("mobile availability", () => {
         }
         terminate() {}
         postMessage(message: { id: number }) {
+          const data = new Blob(["test"]);
+          if (large) Object.defineProperty(data, "size", { value: 101 * 1024 * 1024 });
           queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", {
             data: { id: message.id, type: "done", ok: true, result: {
               exitCode: 0, logs: [], outputs: [{
-                path: "/output/test.ipa", name: "test.ipa", type: "application/zip", data: new Blob(["test"])
+                path: "/output/test.ipa", name: "test.ipa", type: "application/zip", data
               }]
             } }
           })));
@@ -681,10 +685,12 @@ test.describe("mobile availability", () => {
           if (this.url.includes("sylvacors")) {
             queueMicrotask(() => this.upload.onprogress?.({ lengthComputable: true, loaded: 4, total: 4 }));
             setTimeout(() => this.onerror?.(), 1500);
+          } else {
+            (window as unknown as { retryXhr: unknown }).retryXhr = this;
           }
         }
       } as unknown as typeof XMLHttpRequest;
-    });
+    }, large);
     const { p12Bytes, profile } = syntheticSigningFiles();
     const ipa = await syntheticIpa();
     await page.goto("/");
@@ -696,11 +702,24 @@ test.describe("mobile availability", () => {
     await page.getByRole("button", { name: "Install on iPhone", exact: true }).click();
     await page.getByRole("button", { name: "Prepare Installation", exact: true }).click();
     const progress = page.getByTestId("install-upload-progress");
-    await expect(progress).toContainText("100% sent");
-    await expect(progress).toContainText("Waiting for Litterbox to finish");
-    await expect(progress).toContainText("Retrying upload to Litterbox");
-    await expect(progress).toContainText("attempt 2 of 2");
-    await expect(progress).toContainText(/\d+s remaining/);
+    if (large) {
+      await expect(progress.locator('.upload-progress-indeterminate')).toBeVisible();
+      await expect(progress).not.toContainText('%');
+    } else {
+      await expect(progress).toContainText("100%");
+      await expect(progress).toContainText("Waiting for Litterbox to finish");
+      await expect(progress).toContainText("Retrying upload to Litterbox");
+      await expect(progress).toContainText("0%");
+      await expect(progress.locator('[style="width: 0%;"]')).toBeAttached();
+      await page.evaluate(() => {
+        const xhr = (window as unknown as { retryXhr: { upload: { onprogress: (event: unknown) => void } } }).retryXhr;
+        xhr.upload.onprogress({ lengthComputable: true, loaded: 2, total: 4 });
+      });
+      await expect(progress).toContainText("50%");
+      await expect(progress.locator('[style="width: 50%;"]')).toBeVisible();
+      await expect(progress.locator('.upload-progress-indeterminate')).toHaveCount(0);
+    }
+    await expect(progress).not.toContainText(/remaining|elapsed|minutes/);
     await page.getByRole("button", { name: "Cancel upload", exact: true }).click();
     await expect(page.getByRole("dialog")).toContainText("The upload was cancelled.");
     await expect(page.getByRole("button", { name: "Prepare Installation", exact: true })).toBeEnabled();

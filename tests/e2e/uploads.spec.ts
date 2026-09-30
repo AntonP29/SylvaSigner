@@ -8,6 +8,7 @@ import {
   litterboxEndpoint,
   litterboxHost,
   sylvaProxyBaseUrl,
+  sylvaProxyRetryBaseUrl,
   sylvaProxyMaxFileSize,
   uploadSignedIpaToCatbox,
   uploadSignedIpaToLitterbox,
@@ -21,6 +22,7 @@ const originalFetch = globalThis.fetch
 type Outcome = number | 'network' | 'abort' | 'timeout' | 'pending'
 let outcome: Outcome
 let directOutcome: Outcome
+let retryOutcome: Outcome
 let silentAbort: boolean
 let pendingSent: boolean
 let requests: Array<{ url: string; form: FormData; progress: boolean }>
@@ -28,6 +30,7 @@ let requests: Array<{ url: string; form: FormData; progress: boolean }>
 test.beforeEach(() => {
   outcome = 200
   directOutcome = 200
+  retryOutcome = 200
   silentAbort = false
   pendingSent = false
   requests = []
@@ -51,7 +54,7 @@ test.beforeEach(() => {
     }
     send(form: FormData) {
       requests.push({ url: this.url, form, progress: Boolean(this.upload.onprogress) })
-      const result = this.url.startsWith(sylvaProxyBaseUrl) ? outcome : directOutcome
+      const result = this.url.startsWith(sylvaProxyBaseUrl) ? outcome : this.url.startsWith(sylvaProxyRetryBaseUrl) ? retryOutcome : directOutcome
       queueMicrotask(() => {
         if (result === 'network') return this.onerror?.()
         if (result === 'abort') return this.onabort?.()
@@ -92,6 +95,7 @@ const output: OutputFile = {
 for (const provider of ['litterbox', 'catbox'] as const) {
   const endpoint = provider === 'catbox' ? catboxEndpoint : litterboxEndpoint
   const host = provider === 'catbox' ? catboxHost : litterboxHost
+  const retryEndpoint = `${sylvaProxyRetryBaseUrl}/${provider}`
   const upload = (file = output, options = {}) => provider === 'catbox'
     ? uploadSignedIpaToCatbox(file, options)
     : uploadSignedIpaToLitterbox(file, '12h', options)
@@ -113,12 +117,12 @@ for (const provider of ['litterbox', 'catbox'] as const) {
   })
 
   for (const failure of ['network', 'timeout', 0, 404, 413, 429, 502] as const) {
-    test(`${provider}: retries proxy ${failure} directly with intact multipart fields`, async () => {
+    test(`${provider}: retries proxy ${failure} with measured progress and intact multipart fields`, async () => {
       outcome = failure
       let resets = 0
       await expect(upload(output, { onProgress: () => {}, onProgressReset: () => resets++ })).resolves.toBe(`${host}test.ipa`)
-      expect(requests.map(request => request.url)).toEqual([`${sylvaProxyBaseUrl}/${provider}`, endpoint])
-      expect(requests.map(request => request.progress)).toEqual([true, false])
+      expect(requests.map(request => request.url)).toEqual([`${sylvaProxyBaseUrl}/${provider}`, retryEndpoint])
+      expect(requests.map(request => request.progress)).toEqual([true, true])
       expect(requests[1].form).toBe(requests[0].form)
       expect(requests[1].form.get('reqtype')).toBe('fileupload')
       expect(requests[1].form.get('time')).toBe(provider === 'litterbox' ? '12h' : null)
@@ -146,10 +150,12 @@ for (const provider of ['litterbox', 'catbox'] as const) {
   })
 
   test(`${provider}: direct-upload timeout rejects instead of spinning`, async () => {
-    outcome = 'network'
     directOutcome = 'timeout'
-    await expect(upload()).rejects.toThrow('timed out')
-    expect(requests).toHaveLength(2)
+    const blob = new Blob(['test'])
+    Object.defineProperty(blob, 'size', { value: sylvaProxyMaxFileSize + 1 })
+    await expect(upload({ ...output, data: blob })).rejects.toThrow('timed out')
+    expect(requests).toHaveLength(1)
+    expect(requests[0].progress).toBe(false)
   })
 
   test(`${provider}: stalled proxy triggers its idle deadline and falls back`, async () => {
@@ -161,7 +167,7 @@ for (const provider of ['litterbox', 'catbox'] as const) {
     }) as typeof setTimeout
     try {
       await expect(upload()).resolves.toBe(`${host}test.ipa`)
-      expect(requests.map(request => request.url)).toEqual([`${sylvaProxyBaseUrl}/${provider}`, endpoint])
+      expect(requests.map(request => request.url)).toEqual([`${sylvaProxyBaseUrl}/${provider}`, retryEndpoint])
     } finally { globalThis.setTimeout = originalSetTimeout }
   })
 
@@ -179,14 +185,13 @@ for (const provider of ['litterbox', 'catbox'] as const) {
       await expect(upload(output, { onTransfer: (transfer: unknown) => transfers.push(transfer) })).resolves.toBe(`${host}test.ipa`)
       expect(transfers).toEqual([
         { transport: 'proxy', attempt: 1, timeoutMs: 900_000 },
-        { transport: 'direct', attempt: 2, timeoutMs: 300_000 },
+        { transport: 'proxy', attempt: 2, timeoutMs: 900_000 },
       ])
       expect(requests).toHaveLength(2)
     } finally { globalThis.setTimeout = originalSetTimeout }
   })
 
-  test(`${provider}: direct retry stops even if native timeout and abort events never fire`, async () => {
-    outcome = 'network'
+  test(`${provider}: large direct upload stops even if native timeout and abort events never fire`, async () => {
     directOutcome = 'pending'
     silentAbort = true
     const originalSetTimeout = globalThis.setTimeout
@@ -195,8 +200,10 @@ for (const provider of ['litterbox', 'catbox'] as const) {
       return originalSetTimeout(...args)
     }) as typeof setTimeout
     try {
-      await expect(upload()).rejects.toThrow('timed out')
-      expect(requests).toHaveLength(2)
+      const blob = new Blob(['test'])
+      Object.defineProperty(blob, 'size', { value: sylvaProxyMaxFileSize + 1 })
+      await expect(upload({ ...output, data: blob })).rejects.toThrow('timed out')
+      expect(requests).toHaveLength(1)
     } finally { globalThis.setTimeout = originalSetTimeout }
   })
 
@@ -210,6 +217,23 @@ for (const provider of ['litterbox', 'catbox'] as const) {
     expect(requests).toHaveLength(1)
   })
 
+  test(`${provider}: two stalled proxy attempts stop without a third upload`, async () => {
+    outcome = 'pending'
+    retryOutcome = 'pending'
+    pendingSent = true
+    silentAbort = true
+    const originalSetTimeout = globalThis.setTimeout
+    globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+      if (args[1] === 120_000) args[1] = 1
+      return originalSetTimeout(...args)
+    }) as typeof setTimeout
+    try {
+      await expect(upload()).rejects.toThrow('stopped responding')
+      expect(requests.map(request => request.url)).toEqual([`${sylvaProxyBaseUrl}/${provider}`, retryEndpoint])
+      expect(requests.map(request => request.progress)).toEqual([true, true])
+    } finally { globalThis.setTimeout = originalSetTimeout }
+  })
+
   test(`${provider}: host validation errors do not retry`, async () => {
     outcome = 412
     await expect(upload()).rejects.toThrow('HTTP 412')
@@ -219,8 +243,8 @@ for (const provider of ['litterbox', 'catbox'] as const) {
 
   test(`${provider}: both paths failing surfaces a host connection error`, async () => {
     outcome = 'network'
-    directOutcome = 'network'
-    await expect(upload()).rejects.toThrow(`Could not reach ${provider === 'catbox' ? 'Catbox' : 'Litterbox'}`)
+    retryOutcome = 'network'
+    await expect(upload()).rejects.toThrow(`Could not reach the Sylva ${provider === 'catbox' ? 'Catbox' : 'Litterbox'}`)
     expect(requests).toHaveLength(2)
   })
 
@@ -231,9 +255,9 @@ for (const provider of ['litterbox', 'catbox'] as const) {
     outcome = 502
     const events: string[] = []
     await upload(output, { onProgress: () => events.push('progress'), onProgressReset: () => events.push('reset') })
-    expect(events).toEqual(['progress', 'reset'])
-    expect(requests.map(request => request.progress)).toEqual([true, false])
-    expect(requests[1].url).toBe(endpoint)
+    expect(events).toEqual(['progress', 'reset', 'progress'])
+    expect(requests.map(request => request.progress)).toEqual([true, true])
+    expect(requests[1].url).toBe(retryEndpoint)
   })
 
   test(`${provider}: files at the proxy limit go directly to leave room for multipart`, async () => {
@@ -261,8 +285,8 @@ for (const provider of ['litterbox', 'catbox'] as const) {
         uploadRequests.push(`proxy ${route.request().method()}`)
         await route.abort('failed')
       })
-      await page.route(endpoint, async route => {
-        uploadRequests.push(`direct ${route.request().method()}`)
+      await page.route(retryEndpoint, async route => {
+        uploadRequests.push(`retry ${route.request().method()}`)
         await route.fulfill({
           status: 200,
           headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'text/plain' },
@@ -287,7 +311,7 @@ for (const provider of ['litterbox', 'catbox'] as const) {
         }
       }, { source, provider })
       expect(result).toBe(`${host}webkit-test.ipa`)
-      expect(uploadRequests).toEqual(['proxy POST', 'direct POST'])
+      expect(uploadRequests).toEqual(['proxy POST', 'retry POST'])
     } finally {
       await browser.close()
     }

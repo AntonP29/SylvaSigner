@@ -77,7 +77,6 @@ export function InstallQrDialog({
   const [result, setResult] = React.useState<TemporaryInstallResult | null>(null)
   const [qrDataUrl, setQrDataUrl] = React.useState('')
   const [copied, setCopied] = React.useState(false)
-  const [uploadElapsedSeconds, setUploadElapsedSeconds] = React.useState(0)
   const [uploadProgress, setUploadProgress] = React.useState<UploadProgress | null>(null)
   const [uploadTransfer, setUploadTransfer] = React.useState<UploadTransfer | null>(null)
   const uploadController = React.useRef<AbortController | null>(null)
@@ -106,19 +105,6 @@ export function InstallQrDialog({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
-  React.useEffect(() => {
-    if (!busy) {
-      setUploadElapsedSeconds(0)
-      return
-    }
-    const startedAt = Date.now()
-    setUploadElapsedSeconds(0)
-    const timer = window.setInterval(() => {
-      setUploadElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000))
-    }, 1000)
-    return () => window.clearInterval(timer)
-  }, [busy, uploadTransfer, state])
-
   const handlePrepareInstall = async () => {
     const controller = new AbortController()
     uploadController.current = controller
@@ -130,6 +116,13 @@ export function InstallQrDialog({
     setUploadProgress(null)
     setUploadTransfer(null)
 
+    const startTransfer = (transfer: UploadTransfer) => {
+      setUploadTransfer(transfer)
+      setUploadProgress(transfer.transport === 'proxy'
+        ? { loaded: 0, total: outputSize, percent: 0 }
+        : null)
+    }
+
     try {
       await waitForPaint()
       let ipaUrl: string
@@ -138,7 +131,7 @@ export function InstallQrDialog({
         ipaUrl = await uploadSignedIpaToCatbox(output, {
           onProgress: setUploadProgress,
           onProgressReset: () => setUploadProgress(null),
-          onTransfer: setUploadTransfer,
+          onTransfer: startTransfer,
           onLog,
           signal: controller.signal,
         })
@@ -147,7 +140,7 @@ export function InstallQrDialog({
         ipaUrl = await uploadSignedIpaToLitterbox(output, expiry, {
           onProgress: setUploadProgress,
           onProgressReset: () => setUploadProgress(null),
-          onTransfer: setUploadTransfer,
+          onTransfer: startTransfer,
           onLog,
           signal: controller.signal,
         })
@@ -364,15 +357,11 @@ export function InstallQrDialog({
                     : uploadTransfer?.attempt === 2 ? `Retrying upload to ${useCatbox ? 'Catbox' : 'Litterbox'}`
                     : uploadProgress?.percent === 100 ? `Waiting for ${useCatbox ? 'Catbox' : 'Litterbox'} to finish`
                     : useCatbox ? 'Backing up signed IPA to Catbox' : 'Uploading signed IPA'}</span>
-                  <span>
-                    {uploadProgress ? `${uploadProgress.percent}% sent`
-                      : state === 'uploading' && uploadTransfer?.transport === 'direct'
-                        ? `${Math.max(0, Math.ceil(uploadTransfer.timeoutMs / 1000) - uploadElapsedSeconds)}s remaining`
-                        : `${uploadElapsedSeconds}s elapsed`}
-                  </span>
+                  {uploadProgress && <span>{uploadProgress.percent}%</span>}
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-background">
                   <div
+                    key={`${uploadTransfer?.transport}-${uploadTransfer?.attempt}-${state}`}
                     className={
                       uploadProgress
                         ? 'h-full rounded-full bg-yellow-500 transition-[width]'
@@ -384,12 +373,12 @@ export function InstallQrDialog({
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">
                   {state === 'preparing' ? 'Upload complete. Preparing the installation link...'
                     : uploadTransfer?.attempt === 2
-                    ? 'The first attempt failed. Uploading the file again (attempt 2 of 2). This attempt stops after 5 minutes.'
+                    ? 'The first attempt failed. Uploading the file again.'
                     : uploadProgress
                     ? uploadProgress.percent === 100
-                      ? `File sent. Waiting for ${useCatbox ? 'Catbox' : 'Litterbox'} to return the download link. A stalled response stops after 2 minutes.`
+                      ? `File sent. Waiting for ${useCatbox ? 'Catbox' : 'Litterbox'} to return the download link.`
                       : `Keep this tab open while the file is sent to ${useCatbox ? 'Catbox' : 'Litterbox'}.`
-                    : 'Keep Sylva open until the upload finishes. This attempt stops after 5 minutes.'}
+                    : 'Keep Sylva open until the upload finishes.'}
                 </p>
                 <Button
                   type="button"

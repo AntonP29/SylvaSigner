@@ -36,6 +36,7 @@ export const catboxHost = 'https://files.catbox.moe/'
 export const catboxMaxFileSize = 200 * 1024 * 1024
 const paleraManifestEndpoint = 'https://api.palera.in/genPlist'
 export const sylvaProxyBaseUrl = 'https://sylvacors.antonp29.dev'
+export const sylvaProxyRetryBaseUrl = 'https://sylva-worker.antonp29.workers.dev'
 export const sylvaProxyMaxFileSize = 100 * 1024 * 1024
 // The Worker's limit includes the multipart envelope, not only the IPA bytes.
 const multipartSizeAllowance = 64 * 1024
@@ -184,31 +185,31 @@ async function uploadSignedIpaForm(
   const appleMobile = isAppleMobileBrowser()
   const hostName = provider === 'catbox' ? 'Catbox' : 'Litterbox'
   const endpoint = provider === 'catbox' ? catboxEndpoint : litterboxEndpoint
-  let attempt: 1 | 2 = 1
-
   if (outputSize <= sylvaProxyMaxFileSize - multipartSizeAllowance) {
-    options.onTransfer?.({ transport: 'proxy', attempt, timeoutMs: uploadTimeoutMs })
-    try {
-      const response = await uploadFormWithXhr(form, `${sylvaProxyBaseUrl}/${provider}`, {
-        // The Sylva Worker supports preflight; measure progress on mobile too.
-        attachProgress: true,
-        onProgress: options.onProgress,
-        signal: options.signal,
-        errorMessage: `Could not reach the Sylva ${hostName} upload proxy.`,
-      })
-      const canRetryDirect = response.status === 0 || response.status === 404 ||
-        response.status === 413 || response.status === 429 || response.status >= 500
-      if (!canRetryDirect) return response
-    } catch (error) {
-      if (error instanceof UploadCancelledError || options.signal?.aborted) throw error
-      // Network/CORS failures can still succeed through the host's direct API.
+    const proxyBases = [sylvaProxyBaseUrl, sylvaProxyRetryBaseUrl]
+    for (const [index, baseUrl] of proxyBases.entries()) {
+      const lastAttempt = index === proxyBases.length - 1
+      options.onTransfer?.({ transport: 'proxy', attempt: index === 0 ? 1 : 2, timeoutMs: uploadTimeoutMs })
+      try {
+        const response = await uploadFormWithXhr(form, `${baseUrl}/${provider}`, {
+          attachProgress: true,
+          onProgress: options.onProgress,
+          signal: options.signal,
+          errorMessage: `Could not reach the Sylva ${hostName} upload proxy.`,
+        })
+        const retryable = response.status === 0 || response.status === 404 ||
+          response.status === 413 || response.status === 429 || response.status >= 500
+        if (!retryable || lastAttempt) return response
+      } catch (error) {
+        if (lastAttempt || error instanceof UploadCancelledError || options.signal?.aborted) throw error
+      }
+      options.onProgressReset?.()
+      options.onLog?.(`Retrying ${hostName} upload through Sylva's alternate Worker hostname.`)
     }
-    options.onProgressReset?.()
-    attempt = 2
-    options.onLog?.(`Sylva proxy unavailable; trying the direct ${hostName} upload API.`)
+    throw new Error(`The Sylva ${hostName} upload proxy is unavailable.`)
   }
 
-  options.onTransfer?.({ transport: 'direct', attempt, timeoutMs: directUploadTimeoutMs })
+  options.onTransfer?.({ transport: 'direct', attempt: 1, timeoutMs: directUploadTimeoutMs })
   // No upload listeners or custom headers: both hosts need a simple multipart POST.
   return appleMobile
     ? uploadFormWithXhr(form, endpoint, {
