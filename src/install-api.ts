@@ -31,6 +31,17 @@ export const catboxMaxFileSize = 200 * 1024 * 1024
 const paleraManifestEndpoint = 'https://api.palera.in/genPlist'
 export const sylvaProxyBaseUrl = 'https://sylvacors.antonp29.dev'
 export const sylvaProxyMaxFileSize = 100 * 1024 * 1024
+// The Worker's limit includes the multipart envelope, not only the IPA bytes.
+const multipartSizeAllowance = 64 * 1024
+
+type UploadOptions = {
+  onProgress?: (progress: UploadProgress) => void
+  onProgressReset?: () => void
+}
+
+type UploadResponse = { ok: boolean; status: number; text: string }
+
+class UploadCancelledError extends Error {}
 
 function isAppleMobileBrowser() {
   if (typeof navigator === 'undefined') return false
@@ -49,7 +60,7 @@ function uploadFormWithXhr(
     attachProgress?: boolean
   },
 ) {
-  return new Promise<{ ok: boolean; status: number; text: string }>((resolve, reject) => {
+  return new Promise<UploadResponse>((resolve, reject) => {
     const request = new XMLHttpRequest()
     request.open('POST', endpoint)
     request.onload = () => {
@@ -62,7 +73,7 @@ function uploadFormWithXhr(
     request.onerror = () => {
       reject(new Error(options.errorMessage))
     }
-    request.onabort = () => reject(new Error('The upload was cancelled.'))
+    request.onabort = () => reject(new UploadCancelledError('The upload was cancelled.'))
     if (options.attachProgress && options.onProgress) {
       request.upload.onprogress = (event) => {
         if (!event.lengthComputable) return
@@ -89,10 +100,46 @@ async function uploadFormWithFetch(form: FormData, endpoint: string = litterboxE
   }
 }
 
+async function uploadSignedIpaForm(
+  form: FormData,
+  outputSize: number,
+  provider: UploadProvider,
+  options: UploadOptions,
+): Promise<UploadResponse> {
+  const appleMobile = isAppleMobileBrowser()
+  const hostName = provider === 'catbox' ? 'Catbox' : 'Litterbox'
+  const endpoint = provider === 'catbox' ? catboxEndpoint : litterboxEndpoint
+
+  if (outputSize <= sylvaProxyMaxFileSize - multipartSizeAllowance) {
+    try {
+      const response = await uploadFormWithXhr(form, `${sylvaProxyBaseUrl}/${provider}`, {
+        // Upload listeners force a CORS preflight. Keep Safari's multipart POST simple.
+        attachProgress: !appleMobile,
+        onProgress: options.onProgress,
+        errorMessage: `Could not reach the Sylva ${hostName} upload proxy.`,
+      })
+      const canRetryDirect = response.status === 0 || response.status === 404 ||
+        response.status === 413 || response.status === 429 || response.status >= 500
+      if (!canRetryDirect) return response
+    } catch (error) {
+      if (error instanceof UploadCancelledError) throw error
+      // Network/CORS failures can still succeed through the host's direct API.
+    }
+    options.onProgressReset?.()
+  }
+
+  // No upload listeners or custom headers: both hosts need a simple multipart POST.
+  return appleMobile
+    ? uploadFormWithXhr(form, endpoint, {
+        errorMessage: `Could not reach ${hostName}. Check the network or content blockers and retry, or download the signed IPA locally.`,
+      })
+    : uploadFormWithFetch(form, endpoint)
+}
+
 export async function uploadSignedIpaToLitterbox(
   output: OutputFile,
   expiry: LitterboxExpiry = '1h',
-  options: { onProgress?: (progress: UploadProgress) => void } = {},
+  options: UploadOptions = {},
 ) {
   const outputSize = output.data instanceof Blob ? output.data.size : output.data.byteLength
   if (outputSize > litterboxMaxFileSize) {
@@ -111,18 +158,7 @@ export async function uploadSignedIpaToLitterbox(
   form.append('time', expiry)
   form.append('fileToUpload', blob, fileName)
 
-  const response = outputSize <= sylvaProxyMaxFileSize
-    ? await uploadFormWithXhr(form, `${sylvaProxyBaseUrl}/litterbox`, {
-        attachProgress: true,
-        onProgress: options.onProgress,
-        errorMessage: 'Sylva upload proxy could not connect to Litterbox. Retry, or download the signed IPA locally.',
-      })
-    : isAppleMobileBrowser()
-      ? await uploadFormWithXhr(form, litterboxEndpoint, {
-          errorMessage:
-            'Mobile Safari could not connect to Litterbox. Check content blockers, Private Relay, or the current network and retry.',
-        })
-      : await uploadFormWithFetch(form, litterboxEndpoint)
+  const response = await uploadSignedIpaForm(form, outputSize, 'litterbox', options)
 
   if (!response.ok) {
     throw new Error(`Litterbox upload failed with HTTP ${response.status}.`)
@@ -137,7 +173,7 @@ export async function uploadSignedIpaToLitterbox(
 
 export async function uploadSignedIpaToCatbox(
   output: OutputFile,
-  options: { onProgress?: (progress: UploadProgress) => void } = {},
+  options: UploadOptions = {},
 ) {
   const outputSize = output.data instanceof Blob ? output.data.size : output.data.byteLength
   if (outputSize > catboxMaxFileSize) {
@@ -155,34 +191,7 @@ export async function uploadSignedIpaToCatbox(
   form.append('reqtype', 'fileupload')
   form.append('fileToUpload', blob, fileName)
 
-  let response: { ok: boolean; status: number; text: string }
-
-  if (outputSize <= sylvaProxyMaxFileSize) {
-    try {
-      response = await uploadFormWithXhr(form, `${sylvaProxyBaseUrl}/catbox`, {
-        attachProgress: true,
-        onProgress: options.onProgress,
-        errorMessage: 'Sylva upload proxy could not connect to Catbox. Retry, or download the signed IPA locally.',
-      })
-      if (!response.ok && response.status === 404) {
-        throw new Error('Proxy 404')
-      }
-    } catch {
-      response = isAppleMobileBrowser()
-        ? await uploadFormWithXhr(form, catboxEndpoint, {
-            errorMessage:
-              'Mobile Safari could not connect to Catbox. Check content blockers, Private Relay, or the current network and retry.',
-          })
-        : await uploadFormWithFetch(form, catboxEndpoint)
-    }
-  } else {
-    response = isAppleMobileBrowser()
-      ? await uploadFormWithXhr(form, catboxEndpoint, {
-          errorMessage:
-            'Mobile Safari could not connect to Catbox. Check content blockers, Private Relay, or the current network and retry.',
-        })
-      : await uploadFormWithFetch(form, catboxEndpoint)
-  }
+  const response = await uploadSignedIpaForm(form, outputSize, 'catbox', options)
 
   if (!response.ok) {
     throw new Error(`Catbox upload failed with HTTP ${response.status}.`)

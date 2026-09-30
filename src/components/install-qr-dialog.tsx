@@ -127,11 +127,13 @@ export function InstallQrDialog({
         onLog?.('Uploading signed IPA to Catbox (permanent backup)...')
         ipaUrl = await uploadSignedIpaToCatbox(output, {
           onProgress: setUploadProgress,
+          onProgressReset: () => setUploadProgress(null),
         })
       } else {
         onLog?.(`Uploading signed IPA to Litterbox for ${expiry}`)
         ipaUrl = await uploadSignedIpaToLitterbox(output, expiry, {
           onProgress: setUploadProgress,
+          onProgressReset: () => setUploadProgress(null),
         })
       }
       const nextResult = await createInstallUrls(
