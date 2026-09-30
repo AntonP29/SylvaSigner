@@ -33,13 +33,14 @@ export const litterboxHost = 'https://litter.catbox.moe/'
 export const litterboxMaxFileSize = 1024 * 1024 * 1024
 export const catboxEndpoint = 'https://catbox.moe/user/api.php'
 export const catboxHost = 'https://files.catbox.moe/'
-export const catboxMaxFileSize = 200 * 1024 * 1024
 const paleraManifestEndpoint = 'https://api.palera.in/genPlist'
 export const sylvaProxyBaseUrl = 'https://sylvacors.antonp29.dev'
 export const sylvaProxyRetryBaseUrl = 'https://sylva-worker.antonp29.workers.dev'
 export const sylvaProxyMaxFileSize = 100 * 1024 * 1024
 // The Worker's limit includes the multipart envelope, not only the IPA bytes.
 const multipartSizeAllowance = 64 * 1024
+export const catboxMaxFileSize = sylvaProxyMaxFileSize - multipartSizeAllowance
+const catboxSizeError = 'Sylva limits Catbox uploads to 100 MB including upload overhead. Disable backup to use Litterbox (up to 1 GB) or choose a smaller signed IPA.'
 
 type UploadOptions = {
   onProgress?: (progress: UploadProgress) => void
@@ -209,8 +210,10 @@ async function uploadSignedIpaForm(
     throw new Error(`The Sylva ${hostName} upload proxy is unavailable.`)
   }
 
+  // Catbox responses require the CORS-enabled Worker; never send them directly.
+  if (provider === 'catbox') throw new Error(catboxSizeError)
   options.onTransfer?.({ transport: 'direct', attempt: 1, timeoutMs: directUploadTimeoutMs })
-  // No upload listeners or custom headers: both hosts need a simple multipart POST.
+  // No upload listeners or custom headers: keep the direct Litterbox POST simple.
   return appleMobile
     ? uploadFormWithXhr(form, endpoint, {
         signal: options.signal,
@@ -260,7 +263,7 @@ export async function uploadSignedIpaToCatbox(
 ) {
   const outputSize = output.data instanceof Blob ? output.data.size : output.data.byteLength
   if (outputSize > catboxMaxFileSize) {
-    throw new Error('Catbox accepts files up to 200 MB. Disable backup to use Litterbox (up to 1 GB) or choose a smaller signed IPA.')
+    throw new Error(catboxSizeError)
   }
 
   const blob = output.data instanceof Blob

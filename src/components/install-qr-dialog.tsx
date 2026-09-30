@@ -261,7 +261,7 @@ export function InstallQrDialog({
 
             <p className="text-xs leading-5 text-muted-foreground">
               {useCatbox
-                ? 'Large signed IPAs may take a while to upload. Keep this tab open until the installation link is ready. Catbox accepts files up to 200 MB.'
+                ? 'Large signed IPAs may take a while to upload. Keep this tab open until the installation link is ready. Sylva limits Catbox backups to 100 MB.'
                 : 'Large signed IPAs may take a while to upload. Keep this tab open until the installation link is ready. Litterbox accepts files up to 1 GB.'}
             </p>
 
@@ -276,7 +276,7 @@ export function InstallQrDialog({
                 <p className="mt-2">
                   Install success depends on {useCatbox ? 'Catbox' : 'Litterbox'}, Palera&apos;s manifest generator
                   (with the Sylva Worker as backup), Apple OTA behavior, and a certificate trusted
-                  by the iPhone. Catbox accepts files up to 200 MB and stores them permanently;
+                  by the iPhone. Catbox stores backups permanently; Sylva limits these uploads to 100 MB.
                   Litterbox accepts files up to 1 GB and deletes them after the chosen duration.
                   Some networks or regions may block Catbox/Litterbox.
                 </p>
@@ -322,7 +322,7 @@ export function InstallQrDialog({
                 </label>
                 <p className="text-xs text-muted-foreground">
                   {useCatbox
-                    ? 'Permanent hosting via Catbox — link never expires (max 200 MB)'
+                    ? 'Permanent hosting via Catbox — link never expires (max 100 MB)'
                     : 'Temporary hosting via Litterbox — expires automatically (max 1 GB)'}
                 </p>
               </div>
@@ -335,7 +335,7 @@ export function InstallQrDialog({
 
             {exceedsCatboxLimit && (
               <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-xs leading-5 text-yellow-700 dark:text-yellow-300">
-                This signed IPA ({(outputSize / (1024 * 1024)).toFixed(1)} MB) exceeds Catbox&apos;s 200 MB limit. Toggle backup off to use Litterbox (up to 1 GB).
+                This signed IPA ({(outputSize / (1024 * 1024)).toFixed(1)} MB) exceeds Sylva&apos;s 100 MB Catbox request limit, including upload overhead. Toggle backup off to use Litterbox (up to 1 GB).
               </p>
             )}
 

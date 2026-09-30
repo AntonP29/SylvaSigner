@@ -700,6 +700,12 @@ test.describe("mobile availability", () => {
     await page.locator("#cert-password").fill("sylva-test");
     await page.getByRole("button", { name: "Sign IPA" }).click();
     await page.getByRole("button", { name: "Install on iPhone", exact: true }).click();
+    if (large) {
+      await page.getByRole('dialog').getByRole('switch').click();
+      await expect(page.getByRole('dialog')).toContainText('100 MB Catbox request limit');
+      await expect(page.getByRole('button', { name: 'Backup & Install', exact: true })).toBeDisabled();
+      await page.getByRole('dialog').getByRole('switch').click();
+    }
     await page.getByRole("button", { name: "Prepare Installation", exact: true }).click();
     const progress = page.getByTestId("install-upload-progress");
     if (large) {

@@ -24,8 +24,10 @@ to [Litterbox](https://litterbox.catbox.moe/) or permanently backup to [Catbox](
 through Palera, with the Sylva Cloudflare Worker retained as an automatic backup. Small
 uploads are relayed through the Worker, with upload progress on desktop and iPhone/iPad.
 The Worker supports the required CORS preflight. Small uploads retry once through the
-Worker's alternate hostname if the first attempt fails; larger uploads use the direct
-browser-to-host path. This action is separate from local signing and requires explicit
+Worker's alternate hostname if the first attempt fails; larger Litterbox uploads use the direct
+browser-to-host path. Catbox backups are limited to the Worker's 100 MB request limit,
+with space reserved for multipart overhead, and always use the Worker.
+This action is separate from local signing and requires explicit
 user confirmation.
 
 Made by [AntonP29](https://github.com/AntonP29). Project status: `September 29, 2026`.

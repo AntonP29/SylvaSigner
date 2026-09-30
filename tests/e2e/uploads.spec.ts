@@ -4,6 +4,7 @@ import ts from 'typescript'
 import {
   catboxEndpoint,
   catboxHost,
+  catboxMaxFileSize,
   createInstallUrls,
   litterboxEndpoint,
   litterboxHost,
@@ -149,7 +150,7 @@ for (const provider of ['litterbox', 'catbox'] as const) {
     expect(requests).toHaveLength(1)
   })
 
-  test(`${provider}: direct-upload timeout rejects instead of spinning`, async () => {
+  if (provider === 'litterbox') test(`${provider}: direct-upload timeout rejects instead of spinning`, async () => {
     directOutcome = 'timeout'
     const blob = new Blob(['test'])
     Object.defineProperty(blob, 'size', { value: sylvaProxyMaxFileSize + 1 })
@@ -191,7 +192,7 @@ for (const provider of ['litterbox', 'catbox'] as const) {
     } finally { globalThis.setTimeout = originalSetTimeout }
   })
 
-  test(`${provider}: large direct upload stops even if native timeout and abort events never fire`, async () => {
+  if (provider === 'litterbox') test(`${provider}: large direct upload stops even if native timeout and abort events never fire`, async () => {
     directOutcome = 'pending'
     silentAbort = true
     const originalSetTimeout = globalThis.setTimeout
@@ -260,18 +261,23 @@ for (const provider of ['litterbox', 'catbox'] as const) {
     expect(requests[1].url).toBe(retryEndpoint)
   })
 
-  test(`${provider}: files at the proxy limit go directly to leave room for multipart`, async () => {
+  test(`${provider}: files at the proxy request limit leave room for multipart`, async () => {
     const blob = new Blob(['test'])
     Object.defineProperty(blob, 'size', { value: sylvaProxyMaxFileSize })
-    await upload({ ...output, data: blob })
-    expect(requests).toHaveLength(1)
-    expect(requests[0].url).toBe(endpoint)
+    if (provider === 'catbox') {
+      await expect(upload({ ...output, data: blob })).rejects.toThrow('100 MB including upload overhead')
+      expect(requests).toHaveLength(0)
+    } else {
+      await upload({ ...output, data: blob })
+      expect(requests).toHaveLength(1)
+      expect(requests[0].url).toBe(endpoint)
+    }
   })
 
   test(`${provider}: files exceeding the host limit are rejected before any request`, async () => {
     const blob = new Blob(['test'])
-    Object.defineProperty(blob, 'size', { value: provider === 'catbox' ? 201 * 1024 * 1024 : 1024 * 1024 * 1024 + 1 })
-    await expect(upload({ ...output, data: blob })).rejects.toThrow('accepts files up to')
+    Object.defineProperty(blob, 'size', { value: provider === 'catbox' ? catboxMaxFileSize + 1 : 1024 * 1024 * 1024 + 1 })
+    await expect(upload({ ...output, data: blob })).rejects.toThrow(provider === 'catbox' ? '100 MB' : 'accepts files up to')
     expect(requests).toHaveLength(0)
   })
 
@@ -317,6 +323,15 @@ for (const provider of ['litterbox', 'catbox'] as const) {
     }
   })
 }
+
+test('Catbox accepts its maximum safe file size only through the Worker', async () => {
+  const blob = new Blob(['test'])
+  Object.defineProperty(blob, 'size', { value: catboxMaxFileSize })
+  await uploadSignedIpaToCatbox({ ...output, data: blob })
+  expect(catboxMaxFileSize).toBe(sylvaProxyMaxFileSize - 64 * 1024)
+  expect(requests.map(request => request.url)).toEqual([`${sylvaProxyBaseUrl}/catbox`])
+  expect(requests[0].progress).toBe(true)
+})
 
 test('a stalled Palera probe is aborted before the Sylva manifest fallback', async () => {
   const originalSetTimeout = globalThis.setTimeout
