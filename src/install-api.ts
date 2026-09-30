@@ -22,6 +22,12 @@ export type UploadProgress = {
   percent: number
 }
 
+export type UploadTransfer = {
+  transport: 'proxy' | 'direct'
+  attempt: 1 | 2
+  timeoutMs: number
+}
+
 export const litterboxEndpoint = 'https://litterbox.catbox.moe/resources/internals/api.php'
 export const litterboxHost = 'https://litter.catbox.moe/'
 export const litterboxMaxFileSize = 1024 * 1024 * 1024
@@ -38,6 +44,7 @@ type UploadOptions = {
   onProgress?: (progress: UploadProgress) => void
   onProgressReset?: () => void
   onLog?: (message: string) => void
+  onTransfer?: (transfer: UploadTransfer) => void
   signal?: AbortSignal
 }
 
@@ -48,6 +55,7 @@ class UploadTimeoutError extends Error {}
 
 const uploadIdleTimeoutMs = 120 * 1000
 const uploadTimeoutMs = 15 * 60 * 1000
+const directUploadTimeoutMs = 5 * 60 * 1000
 
 async function fetchWithDeadline(endpoint: string, init: RequestInit, timeoutMs: number) {
   const controller = new AbortController()
@@ -89,18 +97,30 @@ function uploadFormWithXhr(
   return new Promise<UploadResponse>((resolve, reject) => {
     const request = new XMLHttpRequest()
     let idleTimer: ReturnType<typeof setTimeout> | undefined
-    let timedOut = false
-    const abort = () => request.abort()
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined
+    let settled = false
     const cleanup = () => {
       clearTimeout(idleTimer)
+      clearTimeout(deadlineTimer)
       options.signal?.removeEventListener('abort', abort)
     }
-    const fail = (error: Error) => { cleanup(); reject(error) }
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error)
+    }
+    // Settle before aborting: WebKit need not dispatch another event for a
+    // stalled request. The JS deadline must not depend on XHR timeout/abort events.
+    const stop = (error: Error) => { fail(error); request.abort() }
+    const abort = () => stop(new UploadCancelledError('The upload was cancelled.'))
     const resetIdleTimer = () => {
       clearTimeout(idleTimer)
-      idleTimer = setTimeout(() => { timedOut = true; request.abort() }, uploadIdleTimeoutMs)
+      idleTimer = setTimeout(() => stop(new UploadTimeoutError('The upload stopped responding. Retry or download the signed IPA locally.')), uploadIdleTimeoutMs)
     }
     request.onload = () => {
+      if (settled) return
+      settled = true
       cleanup()
       resolve({
         ok: request.status >= 200 && request.status < 300,
@@ -111,13 +131,12 @@ function uploadFormWithXhr(
     request.onerror = () => {
       fail(new Error(options.errorMessage))
     }
-    request.onabort = () => fail(timedOut
-      ? new UploadTimeoutError('The upload stopped responding. Retry or download the signed IPA locally.')
-      : new UploadCancelledError('The upload was cancelled.'))
+    request.onabort = () => fail(new UploadCancelledError('The upload was cancelled.'))
     request.ontimeout = () => fail(new UploadTimeoutError('The upload timed out. Retry or download the signed IPA locally.'))
     // Register before open(): WebKit can miss upload events when registered later.
     if (options.attachProgress) {
       request.upload.onprogress = (event) => {
+        if (settled) return
         resetIdleTimer()
         if (!event.lengthComputable) return
         options.onProgress?.({
@@ -128,12 +147,14 @@ function uploadFormWithXhr(
       }
     }
     request.open('POST', endpoint)
-    request.timeout = options.attachProgress ? uploadTimeoutMs : 5 * 60 * 1000
+    const timeoutMs = options.attachProgress ? uploadTimeoutMs : directUploadTimeoutMs
+    request.timeout = timeoutMs
     if (options.signal?.aborted) {
       fail(new UploadCancelledError('The upload was cancelled.'))
       return
     }
     options.signal?.addEventListener('abort', abort, { once: true })
+    deadlineTimer = setTimeout(() => stop(new UploadTimeoutError('The upload timed out. Retry or download the signed IPA locally.')), timeoutMs)
     if (options.attachProgress) resetIdleTimer()
     try { request.send(form) } catch (error) {
       fail(error instanceof Error ? error : new Error(options.errorMessage))
@@ -146,7 +167,7 @@ async function uploadFormWithFetch(form: FormData, endpoint: string, signal?: Ab
     method: 'POST',
     body: form,
     signal,
-  }, 5 * 60 * 1000)
+  }, directUploadTimeoutMs)
   return {
     ok: response.ok,
     status: response.status,
@@ -163,8 +184,10 @@ async function uploadSignedIpaForm(
   const appleMobile = isAppleMobileBrowser()
   const hostName = provider === 'catbox' ? 'Catbox' : 'Litterbox'
   const endpoint = provider === 'catbox' ? catboxEndpoint : litterboxEndpoint
+  let attempt: 1 | 2 = 1
 
   if (outputSize <= sylvaProxyMaxFileSize - multipartSizeAllowance) {
+    options.onTransfer?.({ transport: 'proxy', attempt, timeoutMs: uploadTimeoutMs })
     try {
       const response = await uploadFormWithXhr(form, `${sylvaProxyBaseUrl}/${provider}`, {
         // The Sylva Worker supports preflight; measure progress on mobile too.
@@ -181,9 +204,11 @@ async function uploadSignedIpaForm(
       // Network/CORS failures can still succeed through the host's direct API.
     }
     options.onProgressReset?.()
+    attempt = 2
     options.onLog?.(`Sylva proxy unavailable; trying the direct ${hostName} upload API.`)
   }
 
+  options.onTransfer?.({ transport: 'direct', attempt, timeoutMs: directUploadTimeoutMs })
   // No upload listeners or custom headers: both hosts need a simple multipart POST.
   return appleMobile
     ? uploadFormWithXhr(form, endpoint, {

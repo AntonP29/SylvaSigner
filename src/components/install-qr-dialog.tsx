@@ -21,6 +21,7 @@ import {
   type TemporaryInstallResult,
   type UploadProgress,
   type UploadProvider,
+  type UploadTransfer,
   uploadSignedIpaToCatbox,
   uploadSignedIpaToLitterbox,
 } from '@/install-api'
@@ -78,6 +79,7 @@ export function InstallQrDialog({
   const [copied, setCopied] = React.useState(false)
   const [uploadElapsedSeconds, setUploadElapsedSeconds] = React.useState(0)
   const [uploadProgress, setUploadProgress] = React.useState<UploadProgress | null>(null)
+  const [uploadTransfer, setUploadTransfer] = React.useState<UploadTransfer | null>(null)
   const uploadController = React.useRef<AbortController | null>(null)
   const busy = state === 'uploading' || state === 'preparing'
 
@@ -110,11 +112,12 @@ export function InstallQrDialog({
       return
     }
     const startedAt = Date.now()
+    setUploadElapsedSeconds(0)
     const timer = window.setInterval(() => {
       setUploadElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000))
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [busy])
+  }, [busy, uploadTransfer, state])
 
   const handlePrepareInstall = async () => {
     const controller = new AbortController()
@@ -125,6 +128,7 @@ export function InstallQrDialog({
     setResult(null)
     setQrDataUrl('')
     setUploadProgress(null)
+    setUploadTransfer(null)
 
     try {
       await waitForPaint()
@@ -134,6 +138,7 @@ export function InstallQrDialog({
         ipaUrl = await uploadSignedIpaToCatbox(output, {
           onProgress: setUploadProgress,
           onProgressReset: () => setUploadProgress(null),
+          onTransfer: setUploadTransfer,
           onLog,
           signal: controller.signal,
         })
@@ -142,11 +147,13 @@ export function InstallQrDialog({
         ipaUrl = await uploadSignedIpaToLitterbox(output, expiry, {
           onProgress: setUploadProgress,
           onProgressReset: () => setUploadProgress(null),
+          onTransfer: setUploadTransfer,
           onLog,
           signal: controller.signal,
         })
       }
       setState('preparing')
+      setUploadProgress(null)
       onLog?.('Signed IPA uploaded successfully. Preparing the installation manifest...')
       const nextResult = await createInstallUrls(
         {
@@ -176,6 +183,7 @@ export function InstallQrDialog({
           })
       }
 
+      if (controller.signal.aborted) throw new Error('Installation preparation was cancelled.')
       setResult(nextResult)
       setQrDataUrl(nextQr)
       setState('ready')
@@ -352,9 +360,15 @@ export function InstallQrDialog({
                 data-testid="install-upload-progress"
               >
                 <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                  <span>{state === 'preparing' ? 'Preparing installation link' : uploadProgress?.percent === 100 ? `Waiting for ${useCatbox ? 'Catbox' : 'Litterbox'} to finish` : useCatbox ? 'Backing up signed IPA to Catbox' : 'Uploading signed IPA'}</span>
+                  <span>{state === 'preparing' ? 'Preparing installation link'
+                    : uploadTransfer?.attempt === 2 ? `Retrying upload to ${useCatbox ? 'Catbox' : 'Litterbox'}`
+                    : uploadProgress?.percent === 100 ? `Waiting for ${useCatbox ? 'Catbox' : 'Litterbox'} to finish`
+                    : useCatbox ? 'Backing up signed IPA to Catbox' : 'Uploading signed IPA'}</span>
                   <span>
-                    {uploadProgress ? `${uploadProgress.percent}%` : `${uploadElapsedSeconds}s elapsed`}
+                    {uploadProgress ? `${uploadProgress.percent}% sent`
+                      : state === 'uploading' && uploadTransfer?.transport === 'direct'
+                        ? `${Math.max(0, Math.ceil(uploadTransfer.timeoutMs / 1000) - uploadElapsedSeconds)}s remaining`
+                        : `${uploadElapsedSeconds}s elapsed`}
                   </span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-background">
@@ -369,10 +383,23 @@ export function InstallQrDialog({
                 </div>
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">
                   {state === 'preparing' ? 'Upload complete. Preparing the installation link...'
+                    : uploadTransfer?.attempt === 2
+                    ? 'The first attempt failed. Uploading the file again (attempt 2 of 2). This attempt stops after 5 minutes.'
                     : uploadProgress
-                    ? `Upload progress is measured to Sylva proxy. Keep this tab open while ${useCatbox ? 'Catbox' : 'Litterbox'} finishes.`
-                    : 'Upload progress is indeterminate. Keep Sylva open until the install action appears.'}
+                    ? uploadProgress.percent === 100
+                      ? `File sent. Waiting for ${useCatbox ? 'Catbox' : 'Litterbox'} to return the download link. A stalled response stops after 2 minutes.`
+                      : `Keep this tab open while the file is sent to ${useCatbox ? 'Catbox' : 'Litterbox'}.`
+                    : 'Keep Sylva open until the upload finishes. This attempt stops after 5 minutes.'}
                 </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => uploadController.current?.abort()}
+                >
+                  {state === 'preparing' ? 'Cancel preparation' : 'Cancel upload'}
+                </Button>
               </div>
             )}
 

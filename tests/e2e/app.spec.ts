@@ -651,6 +651,62 @@ test.describe("mobile availability", () => {
     userAgent: iphone.userAgent
   });
 
+  test("explains the retry after 100% and cancels an unresponsive mobile upload", async ({ page }) => {
+    await page.addInitScript(() => {
+      // Supply a signed output; keep this regression focused on the upload UI.
+      const RealWorker = window.Worker;
+      window.Worker = class extends EventTarget {
+        constructor(url: string | URL, options?: WorkerOptions) {
+          super();
+          if (!String(url).includes("zsign-worker")) return new RealWorker(url, options);
+        }
+        terminate() {}
+        postMessage(message: { id: number }) {
+          queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", {
+            data: { id: message.id, type: "done", ok: true, result: {
+              exitCode: 0, logs: [], outputs: [{
+                path: "/output/test.ipa", name: "test.ipa", type: "application/zip", data: new Blob(["test"])
+              }]
+            } }
+          })));
+        }
+      } as unknown as typeof Worker;
+      window.XMLHttpRequest = class {
+        upload = { onprogress: null as ((event: unknown) => void) | null };
+        onerror: (() => void) | null = null;
+        url = "";
+        open(_method: string, url: string) { this.url = url; }
+        abort() {} // Reproduce a browser that never dispatches the abort event.
+        send() {
+          if (this.url.includes("sylvacors")) {
+            queueMicrotask(() => this.upload.onprogress?.({ lengthComputable: true, loaded: 4, total: 4 }));
+            setTimeout(() => this.onerror?.(), 1500);
+          }
+        }
+      } as unknown as typeof XMLHttpRequest;
+    });
+    const { p12Bytes, profile } = syntheticSigningFiles();
+    const ipa = await syntheticIpa();
+    await page.goto("/");
+    await page.setInputFiles("#ipa", { name: "Test.ipa", mimeType: "application/zip", buffer: Buffer.from(ipa) });
+    await page.setInputFiles("#p12", { name: "test.p12", mimeType: "application/x-pkcs12", buffer: p12Bytes });
+    await page.setInputFiles("#profiles", { name: "test.mobileprovision", mimeType: "application/octet-stream", buffer: profile });
+    await page.locator("#cert-password").fill("sylva-test");
+    await page.getByRole("button", { name: "Sign IPA" }).click();
+    await page.getByRole("button", { name: "Install on iPhone", exact: true }).click();
+    await page.getByRole("button", { name: "Prepare Installation", exact: true }).click();
+    const progress = page.getByTestId("install-upload-progress");
+    await expect(progress).toContainText("100% sent");
+    await expect(progress).toContainText("Waiting for Litterbox to finish");
+    await expect(progress).toContainText("Retrying upload to Litterbox");
+    await expect(progress).toContainText("attempt 2 of 2");
+    await expect(progress).toContainText(/\d+s remaining/);
+    await page.getByRole("button", { name: "Cancel upload", exact: true }).click();
+    await expect(page.getByRole("dialog")).toContainText("The upload was cancelled.");
+    await expect(page.getByRole("button", { name: "Prepare Installation", exact: true })).toBeEnabled();
+    await expect(progress).toHaveCount(0);
+  });
+
   test("opens the mobile compatibility signer directly", async ({ page }) => {
     await page.goto("/");
 

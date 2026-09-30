@@ -21,11 +21,15 @@ const originalFetch = globalThis.fetch
 type Outcome = number | 'network' | 'abort' | 'timeout' | 'pending'
 let outcome: Outcome
 let directOutcome: Outcome
+let silentAbort: boolean
+let pendingSent: boolean
 let requests: Array<{ url: string; form: FormData; progress: boolean }>
 
 test.beforeEach(() => {
   outcome = 200
   directOutcome = 200
+  silentAbort = false
+  pendingSent = false
   requests = []
   Object.defineProperty(globalThis, 'navigator', {
     configurable: true,
@@ -40,7 +44,7 @@ test.beforeEach(() => {
     ontimeout: (() => void) | null = null
     upload = { onprogress: null as ((event: ProgressEvent) => void) | null }
     url = ''
-    abort() { this.onabort?.() }
+    abort() { if (!silentAbort) this.onabort?.() }
     open(method: string, url: string) {
       expect(method).toBe('POST')
       this.url = url
@@ -52,7 +56,10 @@ test.beforeEach(() => {
         if (result === 'network') return this.onerror?.()
         if (result === 'abort') return this.onabort?.()
         if (result === 'timeout') return this.ontimeout?.()
-        if (result === 'pending') return
+        if (result === 'pending') {
+          if (pendingSent) this.upload.onprogress?.({ lengthComputable: true, loaded: 4, total: 4 } as ProgressEvent)
+          return
+        }
         this.status = result
         this.responseText = result === 200
           ? `${this.url.includes('litterbox') ? litterboxHost : catboxHost}test.ipa\n`
@@ -156,6 +163,51 @@ for (const provider of ['litterbox', 'catbox'] as const) {
       await expect(upload()).resolves.toBe(`${host}test.ipa`)
       expect(requests.map(request => request.url)).toEqual([`${sylvaProxyBaseUrl}/${provider}`, endpoint])
     } finally { globalThis.setTimeout = originalSetTimeout }
+  })
+
+  test(`${provider}: 100% without a response retries even if XHR never emits abort`, async () => {
+    outcome = 'pending'
+    pendingSent = true
+    silentAbort = true
+    const originalSetTimeout = globalThis.setTimeout
+    globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+      if (args[1] === 120_000) args[1] = 1
+      return originalSetTimeout(...args)
+    }) as typeof setTimeout
+    const transfers: unknown[] = []
+    try {
+      await expect(upload(output, { onTransfer: (transfer: unknown) => transfers.push(transfer) })).resolves.toBe(`${host}test.ipa`)
+      expect(transfers).toEqual([
+        { transport: 'proxy', attempt: 1, timeoutMs: 900_000 },
+        { transport: 'direct', attempt: 2, timeoutMs: 300_000 },
+      ])
+      expect(requests).toHaveLength(2)
+    } finally { globalThis.setTimeout = originalSetTimeout }
+  })
+
+  test(`${provider}: direct retry stops even if native timeout and abort events never fire`, async () => {
+    outcome = 'network'
+    directOutcome = 'pending'
+    silentAbort = true
+    const originalSetTimeout = globalThis.setTimeout
+    globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+      if (args[1] === 300_000) args[1] = 1
+      return originalSetTimeout(...args)
+    }) as typeof setTimeout
+    try {
+      await expect(upload()).rejects.toThrow('timed out')
+      expect(requests).toHaveLength(2)
+    } finally { globalThis.setTimeout = originalSetTimeout }
+  })
+
+  test(`${provider}: cancelling a silent XHR settles immediately without retry`, async () => {
+    outcome = 'pending'
+    silentAbort = true
+    const controller = new AbortController()
+    const pending = upload(output, { signal: controller.signal })
+    controller.abort()
+    await expect(pending).rejects.toThrow('cancelled')
+    expect(requests).toHaveLength(1)
   })
 
   test(`${provider}: host validation errors do not retry`, async () => {

@@ -223,10 +223,14 @@ uploaded to Litterbox.
   progress to the Worker; the Worker still has to finish forwarding the file to Litterbox.
 - Direct uploads remain indeterminate because browser upload progress listeners force
   an extra CORS preflight to the host. The bar resets if an upload switches
-  from the proxy to the direct API.
+  from the proxy to the direct API. The dialog identifies this as a second upload
+  attempt and shows the time remaining instead of silently restarting the timer.
 - Proxy transfers stop after two minutes without upload progress or a host response;
   direct requests stop after five minutes. Manifest probes have a 15-second deadline
   per provider, and the UI displays manifest preparation separately from upload.
+  XHR requests also have an independent JavaScript deadline, so a missing browser
+  timeout/abort event cannot leave the upload promise pending. An in-progress upload
+  or manifest preparation can be cancelled in the dialog.
 - Blob URLs and localhost URLs are not suitable for installation on a separate iPhone.
 
 ## Quick Start
