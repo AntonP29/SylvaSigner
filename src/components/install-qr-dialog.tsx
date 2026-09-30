@@ -39,7 +39,7 @@ type InstallQrDialogProps = {
   ) => void
 }
 
-type UploadState = 'idle' | 'uploading' | 'ready' | 'error'
+type UploadState = 'idle' | 'uploading' | 'preparing' | 'ready' | 'error'
 
 function metadataValue(value: string | undefined, fallback: string) {
   return value?.trim() || fallback
@@ -78,13 +78,17 @@ export function InstallQrDialog({
   const [copied, setCopied] = React.useState(false)
   const [uploadElapsedSeconds, setUploadElapsedSeconds] = React.useState(0)
   const [uploadProgress, setUploadProgress] = React.useState<UploadProgress | null>(null)
+  const uploadController = React.useRef<AbortController | null>(null)
+  const busy = state === 'uploading' || state === 'preparing'
+
+  React.useEffect(() => () => uploadController.current?.abort(), [])
 
   const outputSize = output.data instanceof Blob ? output.data.size : output.data.byteLength
   const exceedsCatboxLimit = useCatbox && outputSize > catboxMaxFileSize
   const exceedsLitterboxLimit = !useCatbox && outputSize > litterboxMaxFileSize
 
   const canUpload = Boolean(
-    state !== 'uploading' &&
+    !busy &&
       appName.trim() &&
       bundleId.trim() &&
       version.trim() &&
@@ -101,7 +105,7 @@ export function InstallQrDialog({
   }, [onClose])
 
   React.useEffect(() => {
-    if (state !== 'uploading') {
+    if (!busy) {
       setUploadElapsedSeconds(0)
       return
     }
@@ -110,9 +114,11 @@ export function InstallQrDialog({
       setUploadElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000))
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [state])
+  }, [busy])
 
   const handlePrepareInstall = async () => {
+    const controller = new AbortController()
+    uploadController.current = controller
     setState('uploading')
     setError('')
     setCopied(false)
@@ -128,14 +134,20 @@ export function InstallQrDialog({
         ipaUrl = await uploadSignedIpaToCatbox(output, {
           onProgress: setUploadProgress,
           onProgressReset: () => setUploadProgress(null),
+          onLog,
+          signal: controller.signal,
         })
       } else {
         onLog?.(`Uploading signed IPA to Litterbox for ${expiry}`)
         ipaUrl = await uploadSignedIpaToLitterbox(output, expiry, {
           onProgress: setUploadProgress,
           onProgressReset: () => setUploadProgress(null),
+          onLog,
+          signal: controller.signal,
         })
       }
+      setState('preparing')
+      onLog?.('Signed IPA uploaded successfully. Preparing the installation manifest...')
       const nextResult = await createInstallUrls(
         {
           appName: appName.trim(),
@@ -143,6 +155,7 @@ export function InstallQrDialog({
           version: version.trim(),
         },
         ipaUrl,
+        controller.signal,
       )
       onLog?.(
         nextResult.manifestProvider === 'palera'
@@ -331,7 +344,7 @@ export function InstallQrDialog({
               </p>
             )}
 
-            {state === 'uploading' && (
+            {busy && (
               <div
                 className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3"
                 role="status"
@@ -339,7 +352,7 @@ export function InstallQrDialog({
                 data-testid="install-upload-progress"
               >
                 <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                  <span>{useCatbox ? 'Backing up signed IPA to Catbox' : 'Uploading signed IPA'}</span>
+                  <span>{state === 'preparing' ? 'Preparing installation link' : uploadProgress?.percent === 100 ? `Waiting for ${useCatbox ? 'Catbox' : 'Litterbox'} to finish` : useCatbox ? 'Backing up signed IPA to Catbox' : 'Uploading signed IPA'}</span>
                   <span>
                     {uploadProgress ? `${uploadProgress.percent}%` : `${uploadElapsedSeconds}s elapsed`}
                   </span>
@@ -355,7 +368,8 @@ export function InstallQrDialog({
                   />
                 </div>
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  {uploadProgress
+                  {state === 'preparing' ? 'Upload complete. Preparing the installation link...'
+                    : uploadProgress
                     ? `Upload progress is measured to Sylva proxy. Keep this tab open while ${useCatbox ? 'Catbox' : 'Litterbox'} finishes.`
                     : 'Upload progress is indeterminate. Keep Sylva open until the install action appears.'}
                 </p>
@@ -396,15 +410,16 @@ export function InstallQrDialog({
                   type="button"
                   onClick={handlePrepareInstall}
                   disabled={!canUpload}
-                  aria-busy={state === 'uploading'}
+                  aria-busy={busy}
                   className="mt-auto h-11 w-full gap-2 sm:w-auto"
                 >
-                  {state === 'uploading' ? (
+                  {busy ? (
                     <LoaderCircle size={16} animate loop />
                   ) : (
                     <Send size={16} />
                   )}
-                  {state === 'uploading'
+                  {state === 'preparing' ? 'Preparing installation link...'
+                    : state === 'uploading'
                     ? useCatbox
                       ? 'Backing up to Catbox...'
                       : 'Uploading signed IPA...'
@@ -414,8 +429,8 @@ export function InstallQrDialog({
                 </Button>
               ) : (
                 <AnimateIcon
-                  animate={state === 'uploading'}
-                  loop={state === 'uploading'}
+                  animate={busy}
+                  loop={busy}
                   animateOnHover
                   asChild
                 >
@@ -425,12 +440,13 @@ export function InstallQrDialog({
                     disabled={!canUpload}
                     className="mt-auto h-9 gap-2"
                   >
-                    {state === 'uploading' ? (
+                    {busy ? (
                       <LoaderCircle size={16} animate loop />
                     ) : (
                       <Send size={16} />
                     )}
-                    {state === 'uploading'
+                    {state === 'preparing' ? 'Preparing installation link...'
+                      : state === 'uploading'
                       ? useCatbox
                         ? 'Backing up...'
                         : 'Uploading...'

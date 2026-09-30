@@ -4,6 +4,7 @@ import ts from 'typescript'
 import {
   catboxEndpoint,
   catboxHost,
+  createInstallUrls,
   litterboxEndpoint,
   litterboxHost,
   sylvaProxyBaseUrl,
@@ -17,7 +18,7 @@ const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigat
 const xhrDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'XMLHttpRequest')
 const originalFetch = globalThis.fetch
 
-type Outcome = number | 'network' | 'abort'
+type Outcome = number | 'network' | 'abort' | 'timeout' | 'pending'
 let outcome: Outcome
 let directOutcome: Outcome
 let requests: Array<{ url: string; form: FormData; progress: boolean }>
@@ -36,8 +37,10 @@ test.beforeEach(() => {
     onload: (() => void) | null = null
     onerror: (() => void) | null = null
     onabort: (() => void) | null = null
+    ontimeout: (() => void) | null = null
     upload = { onprogress: null as ((event: ProgressEvent) => void) | null }
     url = ''
+    abort() { this.onabort?.() }
     open(method: string, url: string) {
       expect(method).toBe('POST')
       this.url = url
@@ -48,6 +51,8 @@ test.beforeEach(() => {
       queueMicrotask(() => {
         if (result === 'network') return this.onerror?.()
         if (result === 'abort') return this.onabort?.()
+        if (result === 'timeout') return this.ontimeout?.()
+        if (result === 'pending') return
         this.status = result
         this.responseText = result === 200
           ? `${this.url.includes('litterbox') ? litterboxHost : catboxHost}test.ipa\n`
@@ -84,27 +89,29 @@ for (const provider of ['litterbox', 'catbox'] as const) {
     ? uploadSignedIpaToCatbox(file, options)
     : uploadSignedIpaToLitterbox(file, '12h', options)
 
-  test(`${provider}: Safari uploads avoid progress-triggered preflight`, async () => {
-    await expect(upload(output, { onProgress: () => { throw new Error('Unexpected progress') } })).resolves.toBe(`${host}test.ipa`)
+  test(`${provider}: Safari uploads report proxy progress`, async () => {
+    let percent = 0
+    await expect(upload(output, { onProgress: (progress: { percent: number }) => { percent = progress.percent } })).resolves.toBe(`${host}test.ipa`)
     expect(requests).toHaveLength(1)
-    expect(requests[0].progress).toBe(false)
+    expect(requests[0].progress).toBe(true)
+    expect(percent).toBe(100)
   })
 
-  test(`${provider}: iPad desktop user agent also avoids upload listeners`, async () => {
+  test(`${provider}: iPad desktop user agent also receives progress`, async () => {
     Object.defineProperty(globalThis, 'navigator', {
       configurable: true, value: { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)', maxTouchPoints: 5 },
     })
-    await upload(output, { onProgress: () => { throw new Error('Unexpected progress') } })
-    expect(requests[0].progress).toBe(false)
+    await upload(output, { onProgress: () => {} })
+    expect(requests[0].progress).toBe(true)
   })
 
-  for (const failure of ['network', 0, 404, 413, 429, 502] as const) {
+  for (const failure of ['network', 'timeout', 0, 404, 413, 429, 502] as const) {
     test(`${provider}: retries proxy ${failure} directly with intact multipart fields`, async () => {
       outcome = failure
       let resets = 0
       await expect(upload(output, { onProgress: () => {}, onProgressReset: () => resets++ })).resolves.toBe(`${host}test.ipa`)
       expect(requests.map(request => request.url)).toEqual([`${sylvaProxyBaseUrl}/${provider}`, endpoint])
-      expect(requests.every(request => !request.progress)).toBe(true)
+      expect(requests.map(request => request.progress)).toEqual([true, false])
       expect(requests[1].form).toBe(requests[0].form)
       expect(requests[1].form.get('reqtype')).toBe('fileupload')
       expect(requests[1].form.get('time')).toBe(provider === 'litterbox' ? '12h' : null)
@@ -122,10 +129,40 @@ for (const provider of ['litterbox', 'catbox'] as const) {
     expect(requests).toHaveLength(1)
   })
 
+  test(`${provider}: AbortSignal cancels an in-flight upload without fallback`, async () => {
+    outcome = 'pending'
+    const controller = new AbortController()
+    const pending = upload(output, { signal: controller.signal })
+    controller.abort()
+    await expect(pending).rejects.toThrow('cancelled')
+    expect(requests).toHaveLength(1)
+  })
+
+  test(`${provider}: direct-upload timeout rejects instead of spinning`, async () => {
+    outcome = 'network'
+    directOutcome = 'timeout'
+    await expect(upload()).rejects.toThrow('timed out')
+    expect(requests).toHaveLength(2)
+  })
+
+  test(`${provider}: stalled proxy triggers its idle deadline and falls back`, async () => {
+    outcome = 'pending'
+    const originalSetTimeout = globalThis.setTimeout
+    globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+      if (args[1] === 120_000) args[1] = 1
+      return originalSetTimeout(...args)
+    }) as typeof setTimeout
+    try {
+      await expect(upload()).resolves.toBe(`${host}test.ipa`)
+      expect(requests.map(request => request.url)).toEqual([`${sylvaProxyBaseUrl}/${provider}`, endpoint])
+    } finally { globalThis.setTimeout = originalSetTimeout }
+  })
+
   test(`${provider}: host validation errors do not retry`, async () => {
     outcome = 412
     await expect(upload()).rejects.toThrow('HTTP 412')
-    expect(requests).toHaveLength(1)
+    await expect(upload()).rejects.toThrow('Upload rejected')
+    expect(requests).toHaveLength(2)
   })
 
   test(`${provider}: both paths failing surfaces a host connection error`, async () => {
@@ -189,7 +226,7 @@ for (const provider of ['litterbox', 'catbox'] as const) {
         try {
           const api = await import(moduleUrl)
           const output = { name: 'test.ipa', path: '/output/test.ipa', type: 'application/zip', data: new Blob(['test']) }
-          const options = { onProgress: () => { throw new Error('Safari must not attach upload listeners') } }
+          const options = { onProgress: () => {} }
           return provider === 'catbox'
             ? await api.uploadSignedIpaToCatbox(output, options)
             : await api.uploadSignedIpaToLitterbox(output, '12h', options)
@@ -204,3 +241,30 @@ for (const provider of ['litterbox', 'catbox'] as const) {
     }
   })
 }
+
+test('a stalled Palera probe is aborted before the Sylva manifest fallback', async () => {
+  const originalSetTimeout = globalThis.setTimeout
+  globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+    if (args[1] === 15_000) args[1] = 1
+    return originalSetTimeout(...args)
+  }) as typeof setTimeout
+  let paleraAborted = false
+  globalThis.fetch = async (input, init) => {
+    if (String(input).startsWith('https://api.palera.in/')) {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          paleraAborted = true
+          reject(new Error('Palera probe aborted'))
+        }, { once: true })
+      })
+    }
+    return new Response('<?xml version="1.0"?><plist version="1.0"></plist>', {
+      headers: { 'Content-Type': 'text/xml' },
+    })
+  }
+  try {
+    const result = await createInstallUrls({ appName: 'Test', bundleId: 'dev.sylva.test', version: '1' }, `${litterboxHost}test.ipa`)
+    expect(paleraAborted).toBe(true)
+    expect(result.manifestProvider).toBe('sylva')
+  } finally { globalThis.setTimeout = originalSetTimeout }
+})

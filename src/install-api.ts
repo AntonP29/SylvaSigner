@@ -37,11 +37,36 @@ const multipartSizeAllowance = 64 * 1024
 type UploadOptions = {
   onProgress?: (progress: UploadProgress) => void
   onProgressReset?: () => void
+  onLog?: (message: string) => void
+  signal?: AbortSignal
 }
 
 type UploadResponse = { ok: boolean; status: number; text: string }
 
 class UploadCancelledError extends Error {}
+class UploadTimeoutError extends Error {}
+
+const uploadIdleTimeoutMs = 120 * 1000
+const uploadTimeoutMs = 15 * 60 * 1000
+
+async function fetchWithDeadline(endpoint: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  if (init.signal?.aborted) controller.abort()
+  init.signal?.addEventListener('abort', abort, { once: true })
+  const timer = setTimeout(abort, timeoutMs)
+  try {
+    const response = await fetch(endpoint, { ...init, signal: controller.signal })
+    return { response, text: await response.text() }
+  } catch (error) {
+    if (init.signal?.aborted) throw new UploadCancelledError('The upload was cancelled.')
+    if (controller.signal.aborted) throw new UploadTimeoutError('The request timed out. Retry or download the signed IPA locally.')
+    throw error
+  } finally {
+    clearTimeout(timer)
+    init.signal?.removeEventListener('abort', abort)
+  }
+}
 
 function isAppleMobileBrowser() {
   if (typeof navigator === 'undefined') return false
@@ -58,12 +83,25 @@ function uploadFormWithXhr(
     errorMessage: string
     onProgress?: (progress: UploadProgress) => void
     attachProgress?: boolean
+    signal?: AbortSignal
   },
 ) {
   return new Promise<UploadResponse>((resolve, reject) => {
     const request = new XMLHttpRequest()
-    request.open('POST', endpoint)
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    let timedOut = false
+    const abort = () => request.abort()
+    const cleanup = () => {
+      clearTimeout(idleTimer)
+      options.signal?.removeEventListener('abort', abort)
+    }
+    const fail = (error: Error) => { cleanup(); reject(error) }
+    const resetIdleTimer = () => {
+      clearTimeout(idleTimer)
+      idleTimer = setTimeout(() => { timedOut = true; request.abort() }, uploadIdleTimeoutMs)
+    }
     request.onload = () => {
+      cleanup()
       resolve({
         ok: request.status >= 200 && request.status < 300,
         status: request.status,
@@ -71,32 +109,48 @@ function uploadFormWithXhr(
       })
     }
     request.onerror = () => {
-      reject(new Error(options.errorMessage))
+      fail(new Error(options.errorMessage))
     }
-    request.onabort = () => reject(new UploadCancelledError('The upload was cancelled.'))
-    if (options.attachProgress && options.onProgress) {
+    request.onabort = () => fail(timedOut
+      ? new UploadTimeoutError('The upload stopped responding. Retry or download the signed IPA locally.')
+      : new UploadCancelledError('The upload was cancelled.'))
+    request.ontimeout = () => fail(new UploadTimeoutError('The upload timed out. Retry or download the signed IPA locally.'))
+    // Register before open(): WebKit can miss upload events when registered later.
+    if (options.attachProgress) {
       request.upload.onprogress = (event) => {
+        resetIdleTimer()
         if (!event.lengthComputable) return
         options.onProgress?.({
           loaded: event.loaded,
           total: event.total,
-          percent: Math.round((event.loaded / event.total) * 100),
+          percent: event.loaded >= event.total ? 100 : Math.min(99, Math.round((event.loaded / event.total) * 100)),
         })
       }
     }
-    request.send(form)
+    request.open('POST', endpoint)
+    request.timeout = options.attachProgress ? uploadTimeoutMs : 5 * 60 * 1000
+    if (options.signal?.aborted) {
+      fail(new UploadCancelledError('The upload was cancelled.'))
+      return
+    }
+    options.signal?.addEventListener('abort', abort, { once: true })
+    if (options.attachProgress) resetIdleTimer()
+    try { request.send(form) } catch (error) {
+      fail(error instanceof Error ? error : new Error(options.errorMessage))
+    }
   })
 }
 
-async function uploadFormWithFetch(form: FormData, endpoint: string = litterboxEndpoint) {
-  const response = await fetch(endpoint, {
+async function uploadFormWithFetch(form: FormData, endpoint: string, signal?: AbortSignal) {
+  const { response, text } = await fetchWithDeadline(endpoint, {
     method: 'POST',
     body: form,
-  })
+    signal,
+  }, 5 * 60 * 1000)
   return {
     ok: response.ok,
     status: response.status,
-    text: (await response.text()).trim(),
+    text: text.trim(),
   }
 }
 
@@ -113,27 +167,30 @@ async function uploadSignedIpaForm(
   if (outputSize <= sylvaProxyMaxFileSize - multipartSizeAllowance) {
     try {
       const response = await uploadFormWithXhr(form, `${sylvaProxyBaseUrl}/${provider}`, {
-        // Upload listeners force a CORS preflight. Keep Safari's multipart POST simple.
-        attachProgress: !appleMobile,
+        // The Sylva Worker supports preflight; measure progress on mobile too.
+        attachProgress: true,
         onProgress: options.onProgress,
+        signal: options.signal,
         errorMessage: `Could not reach the Sylva ${hostName} upload proxy.`,
       })
       const canRetryDirect = response.status === 0 || response.status === 404 ||
         response.status === 413 || response.status === 429 || response.status >= 500
       if (!canRetryDirect) return response
     } catch (error) {
-      if (error instanceof UploadCancelledError) throw error
+      if (error instanceof UploadCancelledError || options.signal?.aborted) throw error
       // Network/CORS failures can still succeed through the host's direct API.
     }
     options.onProgressReset?.()
+    options.onLog?.(`Sylva proxy unavailable; trying the direct ${hostName} upload API.`)
   }
 
   // No upload listeners or custom headers: both hosts need a simple multipart POST.
   return appleMobile
     ? uploadFormWithXhr(form, endpoint, {
+        signal: options.signal,
         errorMessage: `Could not reach ${hostName}. Check the network or content blockers and retry, or download the signed IPA locally.`,
       })
-    : uploadFormWithFetch(form, endpoint)
+    : uploadFormWithFetch(form, endpoint, options.signal)
 }
 
 export async function uploadSignedIpaToLitterbox(
@@ -161,7 +218,7 @@ export async function uploadSignedIpaToLitterbox(
   const response = await uploadSignedIpaForm(form, outputSize, 'litterbox', options)
 
   if (!response.ok) {
-    throw new Error(`Litterbox upload failed with HTTP ${response.status}.`)
+    throw new Error(`Litterbox upload failed with HTTP ${response.status}.${response.text ? ` ${response.text.slice(0, 300)}` : ''}`)
   }
 
   if (!response.text.startsWith(litterboxHost)) {
@@ -194,7 +251,7 @@ export async function uploadSignedIpaToCatbox(
   const response = await uploadSignedIpaForm(form, outputSize, 'catbox', options)
 
   if (!response.ok) {
-    throw new Error(`Catbox upload failed with HTTP ${response.status}.`)
+    throw new Error(`Catbox upload failed with HTTP ${response.status}.${response.text ? ` ${response.text.slice(0, 300)}` : ''}`)
   }
 
   if (!response.text.startsWith(catboxHost)) {
@@ -251,24 +308,28 @@ export function buildSylvaInstallUrls(
 export async function createInstallUrls(
   metadata: InstallMetadata,
   ipaUrl: string,
+  signal?: AbortSignal,
 ): Promise<TemporaryInstallResult> {
   const paleraResult = buildPaleraInstallUrls(metadata, ipaUrl)
 
   try {
-    const response = await fetch(paleraResult.manifestUrl, {
+    const { response } = await fetchWithDeadline(paleraResult.manifestUrl, {
       cache: 'no-store',
       mode: 'no-cors',
-    })
+      signal,
+    }, 15 * 1000)
     if (response.type !== 'opaque' && !response.ok) {
       throw new Error(`Palera manifest endpoint returned HTTP ${response.status}.`)
     }
     return paleraResult
   } catch {
+    if (signal?.aborted) throw new UploadCancelledError('The upload was cancelled.')
     const sylvaResult = buildSylvaInstallUrls(metadata, ipaUrl)
-    const response = await fetch(sylvaResult.manifestUrl, {
+    const { response } = await fetchWithDeadline(sylvaResult.manifestUrl, {
       cache: 'no-store',
       headers: { Accept: 'text/xml,application/xml' },
-    })
+      signal,
+    }, 15 * 1000)
     const contentType = response.headers.get('Content-Type')?.toLowerCase() || ''
     if (!response.ok || !contentType.includes('xml')) {
       throw new Error(`Sylva manifest endpoint returned HTTP ${response.status}.`)

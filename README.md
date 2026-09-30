@@ -22,8 +22,8 @@ profile, password, injected dylibs, and signed output are processed on the user'
 An optional post-sign installation flow can temporarily upload **only the signed IPA**
 to [Litterbox](https://litterbox.catbox.moe/) or permanently backup to [Catbox](https://catbox.moe/) and generate an iOS installation manifest
 through Palera, with the Sylva Cloudflare Worker retained as an automatic backup. Small
-uploads are relayed through the Worker, with upload progress on desktop. iPhone/iPad
-uploads omit progress listeners to avoid a CORS preflight. Both hosts fall back to a direct
+uploads are relayed through the Worker, with upload progress on desktop and iPhone/iPad.
+The Worker supports the required CORS preflight. Both hosts fall back to a direct
 upload if the proxy is unreachable or returns a retryable error; larger uploads use the direct
 browser-to-host path. This action is separate from local signing and requires explicit
 user confirmation.
@@ -138,8 +138,8 @@ Temporary installation is not fully local. After confirmation:
 
 1. The already-signed IPA is uploaded over HTTPS. Signed IPAs below the 100 MB proxy
    limit (with room for multipart overhead) are sent through
-   `https://sylvacors.antonp29.dev/litterbox`, with progress on desktop and a simple
-   multipart request on iPhone/iPad. Proxy connection failures, missing routes, size/rate
+   `https://sylvacors.antonp29.dev/litterbox`, with progress on desktop and iPhone/iPad.
+   Proxy connection failures, missing routes, size/rate
    limits, and server errors automatically fall back to the direct Litterbox API.
    Larger signed IPAs use the direct browser-to-Litterbox path.
 2. The original IPA, P12, provisioning profile, password, and dylibs are not uploaded.
@@ -219,11 +219,14 @@ uploaded to Litterbox.
 - Installation depends on Litterbox, Palera (or the Sylva manifest backup),
   Apple OTA behavior, device trust, and the signing certificate/provisioning profile.
 - Some networks or regions may block Catbox/Litterbox.
-- The upload bar is determinate on desktop when the Sylva Worker path is used. It measures upload
+- The upload bar is determinate when the Sylva Worker path is used. It measures upload
   progress to the Worker; the Worker still has to finish forwarding the file to Litterbox.
-- iPhone/iPad and direct uploads remain indeterminate because browser upload progress
-  listeners force an extra CORS preflight. The bar resets if a desktop upload switches
+- Direct uploads remain indeterminate because browser upload progress listeners force
+  an extra CORS preflight to the host. The bar resets if an upload switches
   from the proxy to the direct API.
+- Proxy transfers stop after two minutes without upload progress or a host response;
+  direct requests stop after five minutes. Manifest probes have a 15-second deadline
+  per provider, and the UI displays manifest preparation separately from upload.
 - Blob URLs and localhost URLs are not suitable for installation on a separate iPhone.
 
 ## Quick Start
@@ -364,8 +367,8 @@ round trip. Normal page load is checked for unexpected external requests.
   Android browsers can still terminate memory-intensive signing workers without recovery.
 - Large IPA performance depends on device CPU, memory, storage, and browser limits.
 - Extraction progress is byte-based; native zsign archive activity is indeterminate.
-- Upload progress is measured only on desktop for signed IPAs that use the Sylva Worker
-  path. iPhone/iPad and direct uploads remain indeterminate for CORS compatibility.
+- Upload progress is measured on desktop and iPhone/iPad for signed IPAs that use the
+  Sylva Worker path. Direct uploads remain indeterminate for CORS compatibility.
 - Native `-i/--install` through `ideviceinstaller` is unsupported in browser-only mode.
 - Raw-socket live OCSP checks are unsupported in browser WebAssembly.
 - Native `system()` operations are stubbed as unsupported.
